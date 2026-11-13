@@ -199,6 +199,12 @@ try {
 
   const oauth = await withToolErrors(async () => { throw new ToolFailure('Expired service session', 'auth_required'); }, { ...writeContext, authMode: 'oauth' })();
   assert.match(checkFailure(oauth, 'auth_required').recoveryGuidance, /server operator/);
+
+const delegatedOauth = await withToolErrors(
+  async () => { throw new ToolFailure('Expired delegated session', 'auth_required'); },
+  { ...writeContext, authMode: 'oauth', backendAuthMode: 'oauth_token_exchange' },
+)();
+assert.match(checkFailure(delegatedOauth, 'auth_required').recoveryGuidance, /AFFiNE token-exchange endpoint/);
   assert.doesNotMatch(oauth.structuredContent.recoveryGuidance, /Run affine-mcp login/);
   assert.equal(toolError('Document 401 not found').structuredContent.code, 'tool_error', 'numeric identifiers must not be mistaken for HTTP statuses');
   for (const [message, causeCode] of [['GraphQL HTTP 401: expired', 'auth_required'], ['GraphQL HTTP 403: denied', 'access_denied'], ['GraphQL HTTP 503: down', 'upstream_unavailable']]) {

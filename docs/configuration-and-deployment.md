@@ -154,6 +154,7 @@ the transport, HTTP bind/auth/origin values, and all OAuth settings shown here.
 | `MCP_TRANSPORT` | No | `stdio` | Set to `http`; `streamable` and legacy `sse` are accepted aliases |
 | `PORT` | No | `3000` | Commonly injected by container platforms |
 | `AFFINE_MCP_AUTH_MODE` | No | `bearer` | `bearer` or `oauth` |
+| `AFFINE_BACKEND_AUTH_MODE` | No | `configured` | `configured` uses one backend credential; `oauth_token_exchange` delegates each OAuth caller to AFFiNE |
 | `AFFINE_MCP_HTTP_HOST` | No | `127.0.0.1` | Use `0.0.0.0` in containers; non-loopback bearer listeners require authentication |
 | `AFFINE_MCP_HTTP_ALLOWED_ORIGINS` | No | none | Comma-separated list for browser clients |
 | `AFFINE_MCP_HTTP_ALLOW_ALL_ORIGINS` | No | `false` | Testing only; rejected in OAuth mode |
@@ -163,6 +164,9 @@ the transport, HTTP bind/auth/origin values, and all OAuth settings shown here.
 | `AFFINE_OAUTH_SCOPES` | No | `mcp` | Scopes advertised for OAuth-protected access |
 | `AFFINE_OAUTH_CLOCK_SKEW_SECONDS` | No | `60` | Positive integer tolerance for OAuth token timestamps |
 | `AFFINE_OAUTH_ALLOW_SERVICE_WRITES` | No | `false` | Explicitly acknowledge write-capable tools using the shared AFFiNE service identity |
+| `AFFINE_TOKEN_EXCHANGE_PATH` | No | `/api/auth/taar/mcp/token` | Same-origin AFFiNE endpoint used by `oauth_token_exchange` mode |
+| `AFFINE_TOKEN_EXCHANGE_TIMEOUT_MS` | No | `5000` | Positive integer deadline for a delegated token exchange |
+| `AFFINE_TOKEN_EXCHANGE_CACHE_MAX_ENTRIES` | No | `128` | Maximum cached short-lived exchanges, keyed by an incoming-token digest |
 
 The following HTTP, proxy, and runtime controls are environment-only. They are
 read when the HTTP server, proxy, or WebSocket client starts and are not read
@@ -404,7 +408,7 @@ escape hatch for isolated private networks and must not be used on an
 internet-reachable listener. Loopback listeners remain available without MCP
 authentication for local development.
 
-### OAuth mode
+### OAuth mode with configured backend credentials
 
 ```bash
 export MCP_TRANSPORT=http
@@ -440,6 +444,57 @@ export AFFINE_OAUTH_ALLOW_SERVICE_WRITES="true"
 ```
 
 This grants every OAuth caller accepted by the configured issuer the same AFFiNE mutation permissions. Use separate deployments or backend credentials when callers require different AFFiNE authorization boundaries.
+
+### OAuth mode with per-user AFFiNE delegation
+
+Use delegated mode when each MCP caller must retain their own AFFiNE membership
+and permissions. Do not configure `AFFINE_API_TOKEN`, `AFFINE_COOKIE`,
+`AFFINE_EMAIL`, `AFFINE_PASSWORD`, or authentication headers in this mode.
+
+```bash
+export MCP_TRANSPORT=http
+export AFFINE_MCP_AUTH_MODE=oauth
+export AFFINE_BACKEND_AUTH_MODE=oauth_token_exchange
+export AFFINE_BASE_URL="https://wiki.example.com"
+export AFFINE_TOKEN_EXCHANGE_PATH="/api/auth/taar/mcp/token"
+export AFFINE_MCP_HTTP_HOST="0.0.0.0"
+export AFFINE_MCP_PUBLIC_BASE_URL="https://mcp.example.com"
+export AFFINE_OAUTH_ISSUER_URL="https://auth.example.com"
+export AFFINE_OAUTH_SCOPES="mcp"
+export AFFINE_TOOL_PROFILE="authoring"
+```
+
+For every tool call, the MCP server sends the validated inbound OAuth bearer
+token to the configured same-origin AFFiNE endpoint:
+
+```http
+POST /api/auth/taar/mcp/token
+Authorization: Bearer <mcp-access-token>
+Content-Type: application/json
+Cache-Control: no-store
+
+{"audience":"affine-api"}
+```
+
+AFFiNE must validate the token signature, exact issuer, MCP resource audience,
+expiry, scope, and subject; map the subject to one AFFiNE user; then return a
+short-lived user-scoped credential:
+
+```json
+{
+  "access_token": "short-lived-affine-token",
+  "token_type": "Bearer",
+  "expires_in": 300
+}
+```
+
+The MCP server never follows redirects for this exchange. It caches the result
+by a SHA-256 digest of the inbound token, never stores the raw token as a cache
+key, caps the cache, and expires the entry before either token expires. MCP
+sessions are bound to the OAuth subject that initialized them. Write tools use
+that user's AFFiNE permissions, so `AFFINE_OAUTH_ALLOW_SERVICE_WRITES` is not
+required in delegated mode; tool profiles still control which operations the
+MCP advertises.
 
 ## Least-privilege tool exposure
 

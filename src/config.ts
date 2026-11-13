@@ -32,6 +32,7 @@ export const AFFINE_CLIENT_VERSION: string =
 
 export type TransportMode = "stdio" | "http";
 export type LoginAtStartMode = "async" | "sync";
+export type BackendAuthMode = "configured" | "oauth_token_exchange";
 
 export type HttpServerConfig = {
   host: string;
@@ -54,6 +55,10 @@ export type ServerConfig = {
   authKind: ConfiguredAuthKind;
   authSource: ConfiguredAuthSource;
   authMode: "bearer" | "oauth";
+  backendAuthMode: BackendAuthMode;
+  tokenExchangePath: string;
+  tokenExchangeTimeoutMs: number;
+  tokenExchangeCacheMaxEntries: number;
   publicBaseUrl?: string;
   oauthIssuerUrl?: string;
   oauthScopes: string[];
@@ -292,6 +297,14 @@ function parseAuthMode(raw: string | undefined): "bearer" | "oauth" {
   throw new Error(`Invalid AFFINE_MCP_AUTH_MODE: ${raw}. Expected 'bearer' or 'oauth'.`);
 }
 
+function parseBackendAuthMode(raw: string | undefined): BackendAuthMode {
+  const normalized = (raw || "configured").trim().toLowerCase();
+  if (normalized === "configured" || normalized === "oauth_token_exchange") return normalized;
+  throw new Error(
+    `Invalid AFFINE_BACKEND_AUTH_MODE: ${raw}. Expected 'configured' or 'oauth_token_exchange'.`,
+  );
+}
+
 function parseOAuthScopes(raw: string | undefined): string[] {
   const scopes = (raw || "mcp")
     .split(/[\s,]+/)
@@ -393,6 +406,7 @@ export function loadConfig(): ServerConfig {
     },
   );
   const authMode = parseAuthMode(env("AFFINE_MCP_AUTH_MODE", file, "bearer"));
+  const backendAuthMode = parseBackendAuthMode(env("AFFINE_BACKEND_AUTH_MODE", file, "configured"));
   const {
     apiToken,
     cookie,
@@ -418,6 +432,19 @@ export function loadConfig(): ServerConfig {
     "AFFINE_OAUTH_CLOCK_SKEW_SECONDS",
     env("AFFINE_OAUTH_CLOCK_SKEW_SECONDS", file),
     60,
+  );
+  const tokenExchangePath = validateGraphqlPath(
+    env("AFFINE_TOKEN_EXCHANGE_PATH", file, "/api/auth/taar/mcp/token")!,
+  );
+  const tokenExchangeTimeoutMs = parsePositiveIntegerEnv(
+    "AFFINE_TOKEN_EXCHANGE_TIMEOUT_MS",
+    env("AFFINE_TOKEN_EXCHANGE_TIMEOUT_MS", file),
+    5_000,
+  );
+  const tokenExchangeCacheMaxEntries = parsePositiveIntegerEnv(
+    "AFFINE_TOKEN_EXCHANGE_CACHE_MAX_ENTRIES",
+    env("AFFINE_TOKEN_EXCHANGE_CACHE_MAX_ENTRIES", file),
+    128,
   );
   const transportMode = parseTransportMode(env("MCP_TRANSPORT", file, "stdio"));
   const loginAtStart = parseLoginAtStart(env("AFFINE_LOGIN_AT_START", file, "async"));
@@ -451,6 +478,10 @@ export function loadConfig(): ServerConfig {
     authKind,
     authSource,
     authMode,
+    backendAuthMode,
+    tokenExchangePath,
+    tokenExchangeTimeoutMs,
+    tokenExchangeCacheMaxEntries,
     publicBaseUrl,
     oauthIssuerUrl,
     oauthScopes,

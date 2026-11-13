@@ -152,7 +152,12 @@ export function toolError(error: unknown, options: ToolErrorOptions = {}) {
 /** Normalize every handler failure while preserving specific partial-write receipts. */
 export function withToolErrors<T extends (...args: any[]) => any>(
   handler: T,
-  context: { toolName: string; authMode: "bearer" | "oauth"; readOnly: boolean },
+  context: {
+    toolName: string;
+    authMode: "bearer" | "oauth";
+    backendAuthMode?: "configured" | "oauth_token_exchange";
+    readOnly: boolean;
+  },
 ) {
   return async (...args: Parameters<T>) => {
     try {
@@ -185,11 +190,14 @@ export function withToolErrors<T extends (...args: any[]) => any>(
       });
       const normalized = result.structuredContent as Record<string, unknown> & { code: string };
       if (context.authMode === "oauth" && (normalized.code === "auth_required" || normalized.causeCode === "auth_required")) {
+        const recoveryGuidance = context.backendAuthMode === "oauth_token_exchange"
+          ? "Reconnect this MCP server using your client's OAuth flow. If the problem continues, ask the operator to check the AFFiNE token-exchange endpoint and your AFFiNE user mapping."
+          : "Ask the MCP server operator to refresh its AFFiNE service credentials and restart the server. If the MCP connection itself requests authorization, reconnect using your client's OAuth flow.";
         return toolError(error, {
           code: normalized.code,
           data: normalized,
           retryable: normalized.retryable === true,
-          recoveryGuidance: "Ask the MCP server operator to refresh its AFFiNE service credentials and restart the server. If the MCP connection itself requests authorization, reconnect using your client's OAuth flow.",
+          recoveryGuidance,
         });
       }
       return result;

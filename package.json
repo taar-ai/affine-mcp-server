@@ -59,6 +59,8 @@
     "test:blob-upload-contract": "node tests/test-blob-upload-contract.mjs",
     "test:secure-random": "node tests/test-secure-random.mjs",
     "test:oauth-service-policy": "node tests/test-oauth-service-policy.mjs",
+    "test:delegated-auth": "node tests/test-delegated-auth.mjs",
+    "test:delegated-http": "node tests/test-delegated-http.mjs",
     "test:comprehensive": "bash tests/run-comprehensive.sh",
     "test:comprehensive:raw": "node test-comprehensive.mjs",
     "test:e2e": "bash tests/run-e2e.sh",

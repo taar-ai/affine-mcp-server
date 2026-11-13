@@ -11,11 +11,13 @@ export function createToolFilterEnvironment(
 
 export function assertOAuthServiceWritePolicy(input: {
   authMode: "bearer" | "oauth";
+  backendAuthMode?: "configured" | "oauth_token_exchange";
   allowServiceWrites: boolean;
   enabledWriteTools: readonly string[];
 }): void {
   if (
     input.authMode === "oauth"
+    && input.backendAuthMode !== "oauth_token_exchange"
     && input.enabledWriteTools.length > 0
     && !input.allowServiceWrites
   ) {

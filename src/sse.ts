@@ -5,6 +5,7 @@ import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
@@ -26,6 +27,7 @@ type TrackedSession = {
   activeRequests: number;
   kind: "streamable" | "legacy-sse";
   lastActivityAt: number;
+  principalSubject?: string;
   transport: HttpTransport;
 };
 
@@ -276,13 +278,40 @@ export async function startHttpMcpServer(
     sessionId: string,
     transport: HttpTransport,
     kind: TrackedSession["kind"],
+    principalSubject?: string,
   ) => {
     sessions.set(sessionId, {
       activeRequests: 0,
       kind,
       lastActivityAt: Date.now(),
+      principalSubject,
       transport,
     });
+  };
+
+  const requestPrincipalSubject = (req: Request): string | undefined => {
+    const authInfo = (req as Request & { auth?: AuthInfo }).auth;
+    const subject = authInfo?.extra?.subject;
+    return typeof subject === "string" && subject.trim() ? subject : undefined;
+  };
+
+  const requireDelegatedPrincipal = (req: Request, res: Response): string | undefined => {
+    const subject = requestPrincipalSubject(req);
+    if (config.backendAuthMode === "oauth_token_exchange" && !subject) {
+      sendJsonRpcError(res, 401, -32001, "Authenticated request is missing a user subject");
+      return undefined;
+    }
+    return subject;
+  };
+
+  const matchesSessionPrincipal = (
+    session: TrackedSession,
+    subject: string | undefined,
+    res: Response,
+  ): boolean => {
+    if (!session.principalSubject || session.principalSubject === subject) return true;
+    sendJsonRpcError(res, 403, -32003, "MCP session belongs to a different authenticated user");
+    return false;
   };
 
   const removeSession = (sessionId: string, transport: HttpTransport) => {
@@ -346,6 +375,9 @@ export async function startHttpMcpServer(
         return;
       }
 
+      const principalSubject = requireDelegatedPrincipal(req, res);
+      if (config.backendAuthMode === "oauth_token_exchange" && !principalSubject) return;
+
       // mcp-session-id header can technically be string | string[]; normalise.
       const sidHeader = req.headers["mcp-session-id"];
       const sessionId = Array.isArray(sidHeader) ? sidHeader[0] : sidHeader;
@@ -354,6 +386,7 @@ export async function startHttpMcpServer(
       const existing = sessionId ? sessions.get(sessionId) : undefined;
 
       if (existing?.transport instanceof StreamableHTTPServerTransport) {
+        if (!matchesSessionPrincipal(existing, principalSubject, res)) return;
         transport = existing.transport;
         endSessionRequest = beginSessionRequest(sessionId!, req.method);
       } else if (!sessionId && req.method === "POST") {
@@ -379,7 +412,7 @@ export async function startHttpMcpServer(
             console.error(
               `[affine-mcp] StreamableHTTP session initialized: ${sid}`,
             );
-            registerSession(sid, transport, "streamable");
+            registerSession(sid, transport, "streamable", principalSubject);
             endSessionRequest = beginSessionRequest(sid, req.method);
           },
         });
@@ -452,11 +485,13 @@ export async function startHttpMcpServer(
         rejectSessionCapacity(res);
         return;
       }
+      const principalSubject = requireDelegatedPrincipal(req, res);
+      if (config.backendAuthMode === "oauth_token_exchange" && !principalSubject) return;
 
       // @ts-ignore — intentional: SSEServerTransport retained for backward compat only
       transport = new SSEServerTransport("/messages", res);
       const sessionId = transport.sessionId;
-      registerSession(sessionId, transport, "legacy-sse");
+      registerSession(sessionId, transport, "legacy-sse", principalSubject);
 
       res.on("close", () => {
         console.error(`[affine-mcp] Legacy SSE session closed: ${sessionId}`);
@@ -511,6 +546,9 @@ export async function startHttpMcpServer(
         );
         return;
       }
+      const principalSubject = requireDelegatedPrincipal(req, res);
+      if (config.backendAuthMode === "oauth_token_exchange" && !principalSubject) return;
+      if (!matchesSessionPrincipal(session, principalSubject, res)) return;
       const endSessionRequest = beginSessionRequest(sessionId, req.method);
 
       try {

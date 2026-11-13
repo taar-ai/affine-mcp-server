@@ -345,7 +345,8 @@ For common failures, see:
   script path does not fix a `#!/usr/bin/env node` shebang when the GUI process has
   no Node.js directory in `PATH`. See [GUI client PATH troubleshooting](docs/client-setup.md#gui-client-path-troubleshooting).
 - Restrict exposed tools with `AFFINE_DISABLED_GROUPS` and `AFFINE_DISABLED_TOOLS` for least-privilege setups
-- Treat OAuth mode as a shared AFFiNE service-account deployment: it defaults to `read_only`, and write-capable profiles require `AFFINE_OAUTH_ALLOW_SERVICE_WRITES=true`
+- OAuth defaults to a shared AFFiNE service account and `read_only`; write-capable shared deployments require `AFFINE_OAUTH_ALLOW_SERVICE_WRITES=true`
+- For per-user authorization, use `AFFINE_BACKEND_AUTH_MODE=oauth_token_exchange`; each validated MCP caller is mapped to a short-lived user-scoped AFFiNE token and each MCP session is bound to one OAuth subject
 - Use `/healthz` and `/readyz` when running the HTTP server behind a container platform or load balancer
 - Set HTTP body, session, idle, and shutdown limits explicitly for high-volume deployments
 

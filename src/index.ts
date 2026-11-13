@@ -12,7 +12,7 @@ import { registerUserTools } from "./tools/user.js";
 import { registerUserCRUDTools } from "./tools/userCRUD.js";
 import { registerBlobTools } from "./tools/blobStorage.js";
 import { registerNotificationTools } from "./tools/notifications.js";
-import { AuthSession, parseLoginMode } from "./authSession.js";
+import { AuthSession, parseLoginMode, type AuthSnapshot } from "./authSession.js";
 import { registerAuthTools } from "./tools/auth.js";
 import { registerOrganizeTools } from "./tools/organize.js";
 import { registerPropertyTools } from "./tools/properties.js";
@@ -29,6 +29,7 @@ import {
   assertOAuthServiceWritePolicy,
   createToolFilterEnvironment,
 } from "./oauthServicePolicy.js";
+import { DelegatedAffineAuth, runWithDelegatedAuth } from "./delegatedAuth.js";
 
 // CLI commands: affine-mcp login|status|logout|version
 const rawArgs = process.argv.slice(2);
@@ -64,10 +65,10 @@ function loadServerConfig(): ServerConfig {
 }
 const config = loadServerConfig();
 const useHttpTransport = config.transportMode === "http";
+const usesDelegatedAuth = config.backendAuthMode === "oauth_token_exchange";
 
-// OAuth callers share one AFFiNE service credential. Default that deployment
-// model to read-only unless operators explicitly enable both a write-capable
-// profile and the service-write acknowledgement.
+// Shared-credential OAuth deployments default to read-only. Delegated OAuth
+// exchanges each caller's token for their own short-lived AFFiNE credential.
 const toolFilterEnvironment = createToolFilterEnvironment(config.authMode, process.env);
 
 // Tool filtering is parsed once at module load (not per-session in HTTP mode).
@@ -76,7 +77,7 @@ const toolFilter = createToolFilter(toolFilterEnvironment);
 if (config.authMode === "oauth" && !useHttpTransport) {
   throw new Error("AFFINE_MCP_AUTH_MODE=oauth requires MCP_TRANSPORT=http (or streamable/sse).");
 }
-if (config.authMode === "oauth" && process.env.AFFINE_LOGIN_AT_START) {
+if (config.authMode === "oauth" && process.env.AFFINE_LOGIN_AT_START && !usesDelegatedAuth) {
   console.error("[affine-mcp] AFFINE_LOGIN_AT_START is ignored when AFFINE_MCP_AUTH_MODE=oauth.");
 }
 
@@ -87,34 +88,61 @@ const loginMode = config.authMode === "oauth"
 const configuredAuth = resolveConfiguredAuth(config);
 const sessionBearer = configuredAuth.apiToken;
 const sessionCookie = configuredAuth.cookie;
-const authSession = new AuthSession({
-  baseUrl: config.baseUrl,
-  bearer: sessionBearer,
-  cookie: sessionCookie,
-  email: sessionBearer || sessionCookie ? undefined : configuredAuth.email,
-  password: sessionBearer || sessionCookie ? undefined : configuredAuth.password,
-  headers: configuredAuth.headers,
-});
+let authSession: AuthSession | undefined;
+let delegatedAuth: DelegatedAffineAuth | undefined;
+let backendAuthProvider: () => Promise<AuthSnapshot>;
 
-if (config.authMode === "oauth" && !authSession.hasConfiguredAuth) {
-  throw new Error(
-    "AFFINE_MCP_AUTH_MODE=oauth requires AFFiNE backend service credentials. " +
-    "Set AFFINE_EMAIL and AFFINE_PASSWORD, AFFINE_COOKIE, or a compatible AFFINE_API_TOKEN.",
-  );
+if (usesDelegatedAuth) {
+  if (config.authMode !== "oauth" || !useHttpTransport) {
+    throw new Error(
+      "AFFINE_BACKEND_AUTH_MODE=oauth_token_exchange requires AFFINE_MCP_AUTH_MODE=oauth and MCP_TRANSPORT=http.",
+    );
+  }
+  if (configuredAuth.kind !== "none") {
+    throw new Error(
+      "AFFINE_BACKEND_AUTH_MODE=oauth_token_exchange cannot be combined with AFFINE_API_TOKEN, " +
+      "AFFINE_COOKIE, AFFINE_EMAIL, AFFINE_PASSWORD, or authentication headers.",
+    );
+  }
+  delegatedAuth = new DelegatedAffineAuth({
+    baseUrl: config.baseUrl,
+    exchangePath: config.tokenExchangePath,
+    timeoutMs: config.tokenExchangeTimeoutMs,
+    cacheMaxEntries: config.tokenExchangeCacheMaxEntries,
+  });
+  backendAuthProvider = () => delegatedAuth!.ready();
+} else {
+  authSession = new AuthSession({
+    baseUrl: config.baseUrl,
+    bearer: sessionBearer,
+    cookie: sessionCookie,
+    email: sessionBearer || sessionCookie ? undefined : configuredAuth.email,
+    password: sessionBearer || sessionCookie ? undefined : configuredAuth.password,
+    headers: configuredAuth.headers,
+  });
+  if (config.authMode === "oauth" && !authSession.hasConfiguredAuth) {
+    throw new Error(
+      "AFFINE_MCP_AUTH_MODE=oauth with configured backend auth requires AFFiNE service credentials. " +
+      "Set AFFINE_EMAIL and AFFINE_PASSWORD, AFFINE_COOKIE, or a compatible AFFINE_API_TOKEN.",
+    );
+  }
+  backendAuthProvider = () => authSession!.ready();
 }
 
 // The process-scoped AuthSession owns credentials after configuration is loaded.
 config.email = undefined;
 config.password = undefined;
 
-if (loginMode === "async" && authSession.requiresLogin) {
+if (loginMode === "async" && authSession?.requiresLogin) {
   authSession.start();
 }
 
 // Startup diagnostics (visible in Claude Code MCP server logs via stderr)
 console.error(`[affine-mcp] Config: ${CONFIG_FILE} (${existsSync(CONFIG_FILE) ? 'found' : 'missing'})`);
 console.error(`[affine-mcp] Endpoint: ${config.graphqlEndpoint}`);
-const authSource = authSession.hasConfiguredAuth ? authSession.source : "not configured";
+const authSource = usesDelegatedAuth
+  ? "oauth token exchange"
+  : authSession?.hasConfiguredAuth ? authSession.source : "not configured";
 console.error(`[affine-mcp] Auth: ${authSource}`);
 if (authSource === "not configured") {
   console.error("[affine-mcp] WARNING: No authentication configured. Some operations may fail.");
@@ -126,11 +154,13 @@ console.error(`[affine-mcp] Workspace: ${config.defaultWorkspaceId ? 'set' : '(n
 
 assertOAuthServiceWritePolicy({
   authMode: config.authMode,
+  backendAuthMode: config.backendAuthMode,
   allowServiceWrites: config.oauthAllowServiceWrites,
   enabledWriteTools: toolFilter.enabledWriteTools,
 });
 if (
   config.authMode === "oauth"
+  && !usesDelegatedAuth
   && config.oauthAllowServiceWrites
   && toolFilter.enabledWriteTools.length > 0
 ) {
@@ -152,7 +182,7 @@ async function buildServer() {
     endpoint: config.graphqlEndpoint,
     baseUrl: config.baseUrl,
     headers: gqlHeaders,
-    authProvider: () => authSession.ready(),
+    authProvider: backendAuthProvider,
   });
 
 
@@ -169,6 +199,12 @@ async function buildServer() {
       const coordinated = coordinateTool(name, options?.inputSchema || {}, handler, {
         gql, endpoint: config.graphqlEndpoint, workspaceId: config.defaultWorkspaceId,
       });
+      const contextualHandler = (...args: any[]) => {
+        const invoke = coordinated.handler as (...handlerArgs: any[]) => any;
+        if (!usesDelegatedAuth) return invoke(...args);
+        const extra = args[args.length - 1];
+        return runWithDelegatedAuth(extra?.authInfo, () => invoke(...args));
+      };
       return originalRegisterTool(name, {
         ...options,
         inputSchema: coordinated.inputSchema,
@@ -177,9 +213,10 @@ async function buildServer() {
           ...toolAnnotationsFor(name),
           ...(options?.annotations || {}),
         },
-      }, withToolErrors(coordinated.handler, {
+      }, withToolErrors(contextualHandler, {
         toolName: name,
         authMode: config.authMode,
+        backendAuthMode: config.backendAuthMode,
         readOnly: Boolean(toolAnnotationsFor(name).readOnlyHint),
       }));
     };
@@ -211,7 +248,7 @@ async function buildServer() {
 }
 
 async function start() {
-  if (loginMode === "sync" && authSession.requiresLogin) {
+  if (loginMode === "sync" && authSession?.requiresLogin) {
     await authSession.ready();
   }
 

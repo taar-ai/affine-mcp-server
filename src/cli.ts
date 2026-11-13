@@ -366,6 +366,7 @@ function buildEffectiveConfigSummary(effective: ServerConfig = loadConfig()) {
     additionalHeadersConfigured: Boolean(process.env.AFFINE_HEADERS_JSON || stored.AFFINE_HEADERS_JSON),
     workspaceId: effective.defaultWorkspaceId || null,
     authMode: effective.authMode,
+    backendAuthMode: effective.backendAuthMode,
     authKind,
     apiToken: auth.apiToken ? redactSecret(auth.apiToken) : null,
     cookie: auth.cookie ? "(set)" : null,
@@ -374,6 +375,9 @@ function buildEffectiveConfigSummary(effective: ServerConfig = loadConfig()) {
     oauthIssuerUrl: effective.oauthIssuerUrl || null,
     oauthScopes: effective.oauthScopes,
     oauthClockSkewSeconds: effective.oauthClockSkewSeconds,
+    tokenExchangePath: effective.tokenExchangePath,
+    tokenExchangeTimeoutMs: effective.tokenExchangeTimeoutMs,
+    tokenExchangeCacheMaxEntries: effective.tokenExchangeCacheMaxEntries,
     transportMode: effective.transportMode,
     loginAtStart: effective.loginAtStart,
     http: {
@@ -393,10 +397,14 @@ function buildEffectiveConfigSummary(effective: ServerConfig = loadConfig()) {
       password: getEffectiveAuthValueSource("AFFINE_PASSWORD", auth.password, stored, effective.authSource),
       workspaceId: getConfigValueSource("AFFINE_WORKSPACE_ID", stored),
       authMode: getConfigValueSource("AFFINE_MCP_AUTH_MODE", stored, "bearer"),
+      backendAuthMode: getConfigValueSource("AFFINE_BACKEND_AUTH_MODE", stored, "configured"),
       publicBaseUrl: getConfigValueSource("AFFINE_MCP_PUBLIC_BASE_URL", stored),
       oauthIssuerUrl: getConfigValueSource("AFFINE_OAUTH_ISSUER_URL", stored),
       oauthScopes: getConfigValueSource("AFFINE_OAUTH_SCOPES", stored, "mcp"),
       oauthClockSkewSeconds: getConfigValueSource("AFFINE_OAUTH_CLOCK_SKEW_SECONDS", stored, "60"),
+      tokenExchangePath: getConfigValueSource("AFFINE_TOKEN_EXCHANGE_PATH", stored, "/api/auth/taar/mcp/token"),
+      tokenExchangeTimeoutMs: getConfigValueSource("AFFINE_TOKEN_EXCHANGE_TIMEOUT_MS", stored, "5000"),
+      tokenExchangeCacheMaxEntries: getConfigValueSource("AFFINE_TOKEN_EXCHANGE_CACHE_MAX_ENTRIES", stored, "128"),
       transportMode: getConfigValueSource("MCP_TRANSPORT", stored, "stdio"),
       loginAtStart: getConfigValueSource("AFFINE_LOGIN_AT_START", stored, "async"),
       httpHost: getConfigValueSource("AFFINE_MCP_HTTP_HOST", stored, "127.0.0.1"),
@@ -1534,6 +1542,7 @@ async function doctor(args: string[]) {
     const filter = createToolFilter(createToolFilterEnvironment(effective.authMode, process.env));
     assertOAuthServiceWritePolicy({
       authMode: effective.authMode,
+      backendAuthMode: effective.backendAuthMode,
       allowServiceWrites: effective.oauthAllowServiceWrites,
       enabledWriteTools: filter.enabledWriteTools,
     });
@@ -1647,6 +1656,7 @@ async function doctor(args: string[]) {
   console.log(`Base URL: ${summary.baseUrl}`);
   console.log(`GraphQL endpoint: ${summary.graphqlEndpoint}`);
   console.log(`Auth mode: ${summary.authMode}`);
+  console.log(`Backend auth mode: ${effective.backendAuthMode}`);
   console.log(
     `Tool filter: ${filterSummary.profile || "invalid"} ` +
     `(${filterSummary.enabledToolCount ?? "?"}/${filterSummary.totalToolCount ?? "?"} enabled)`,
@@ -1681,6 +1691,10 @@ function getSnippetEnv(): Record<string, string> {
   if (effective.defaultWorkspaceId) env.AFFINE_WORKSPACE_ID = effective.defaultWorkspaceId;
   if (effective.authMode === "oauth") {
     env.AFFINE_MCP_AUTH_MODE = "oauth";
+    if (effective.backendAuthMode === "oauth_token_exchange") {
+      env.AFFINE_BACKEND_AUTH_MODE = "oauth_token_exchange";
+      env.AFFINE_TOKEN_EXCHANGE_PATH = effective.tokenExchangePath;
+    }
     if (effective.publicBaseUrl) env.AFFINE_MCP_PUBLIC_BASE_URL = effective.publicBaseUrl;
     if (effective.oauthIssuerUrl) env.AFFINE_OAUTH_ISSUER_URL = effective.oauthIssuerUrl;
     if (effective.oauthScopes.length > 0) env.AFFINE_OAUTH_SCOPES = effective.oauthScopes.join(" ");

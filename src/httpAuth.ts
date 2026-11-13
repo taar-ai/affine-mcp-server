@@ -2,6 +2,7 @@ import { createHash, timingSafeEqual } from "node:crypto";
 
 import type express from "express";
 import type { NextFunction, Request, Response } from "express";
+import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
 
 import type { ServerConfig } from "./config.js";
 import type { OAuthConfig } from "./oauth.js";
@@ -11,6 +12,7 @@ import {
   getOAuthProtectedResourceMetadataUrl,
   validateOAuthConfig,
   verifyOAuthAccessToken,
+  getOAuthResourceUrl,
 } from "./oauth.js";
 
 export type HttpAuthState = {
@@ -124,7 +126,8 @@ export function createHttpAuthState(
         return;
       }
 
-      void verifyOAuthAccessToken(bearerMatch[1], oauthConfig)
+      const accessToken = bearerMatch[1];
+      void verifyOAuthAccessToken(accessToken, oauthConfig)
         .then((authInfo) => {
           const requiredScopes = oauthConfig?.scopes || [];
           const hasAllScopes = requiredScopes.every((scope) => authInfo.scopes.includes(scope));
@@ -139,6 +142,14 @@ export function createHttpAuthState(
             );
             return;
           }
+          (req as Request & { auth?: AuthInfo }).auth = {
+            token: accessToken,
+            clientId: authInfo.clientId ?? "",
+            scopes: authInfo.scopes,
+            expiresAt: authInfo.expiresAt,
+            resource: new URL(getOAuthResourceUrl(oauthConfig!.publicBaseUrl)),
+            extra: { subject: authInfo.subject },
+          };
           next();
         })
         .catch((error) => {

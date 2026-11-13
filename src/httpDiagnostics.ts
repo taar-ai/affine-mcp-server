@@ -57,6 +57,7 @@ export function registerHttpDiagnosticsRoutes(
     res.json({
       status: "ok",
       authMode: config.authMode,
+      backendAuthMode: config.backendAuthMode,
       protected: config.authMode === "oauth" || Boolean(authState.httpAuthToken),
     });
   });
@@ -71,6 +72,7 @@ export function registerHttpDiagnosticsRoutes(
         res.status(503).json({
           status: "not_ready",
           authMode: "oauth",
+          backendAuthMode: config.backendAuthMode,
           component: "oauth",
           error: message,
         });
@@ -83,6 +85,7 @@ export function registerHttpDiagnosticsRoutes(
       res.json({
         status: "ok",
         authMode: config.authMode,
+        backendAuthMode: config.backendAuthMode,
         upstream: "affine-graphql",
         graphqlPath: config.graphqlPath,
         ...(oauthReadiness && authState.oauthConfig
@@ -98,6 +101,7 @@ export function registerHttpDiagnosticsRoutes(
       res.status(503).json({
         status: "not_ready",
         authMode: config.authMode,
+        backendAuthMode: config.backendAuthMode,
         component: "affine-graphql",
         error: message,
       });

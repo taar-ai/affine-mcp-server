@@ -51,6 +51,12 @@ for (const profile of ["full", "core", "authoring"]) {
     allowServiceWrites: true,
     enabledWriteTools: filter.enabledWriteTools,
   }));
+  assert.doesNotThrow(() => assertOAuthServiceWritePolicy({
+    authMode: "oauth",
+    backendAuthMode: "oauth_token_exchange",
+    allowServiceWrites: false,
+    enabledWriteTools: filter.enabledWriteTools,
+  }));
 }
 
 const explicitlyRestrictedFullFilter = createToolFilter(
@@ -98,6 +104,19 @@ const deniedProcess = spawnSync(process.execPath, ["dist/index.js"], {
 });
 assert.equal(deniedProcess.status, 1);
 assert.match(deniedProcess.stderr, /AFFINE_OAUTH_ALLOW_SERVICE_WRITES=true/);
+
+const delegatedWithCredentialProcess = spawnSync(process.execPath, ["dist/index.js"], {
+  cwd: projectDirectory,
+  env: {
+    ...isolatedEnvironment,
+    AFFINE_BACKEND_AUTH_MODE: "oauth_token_exchange",
+    AFFINE_OAUTH_ALLOW_SERVICE_WRITES: "true",
+  },
+  encoding: "utf8",
+  timeout: 5_000,
+});
+assert.equal(delegatedWithCredentialProcess.status, 1);
+assert.match(delegatedWithCredentialProcess.stderr, /cannot be combined with AFFINE_API_TOKEN/);
 
 const invalidBooleanProcess = spawnSync(process.execPath, ["dist/index.js"], {
   cwd: projectDirectory,
