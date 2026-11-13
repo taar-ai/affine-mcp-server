@@ -93,13 +93,13 @@ validation. Access logging is disabled so request URLs/tokens are not logged.
 install a published upstream MCP package. Builder and runtime use the same
 digest-pinned Node 22 base. Runtime UID/GID is 10001.
 
-Published AMD64 image (ACR build `cu26`):
+Published AMD64 image with exact tunnel resource support (ACR build `cu27`):
 
 ```text
-taaracr0.azurecr.io/taar-affine-mcp@sha256:305093cff9d5df9478b05931b506623215c534ede5850ad29d71442d96a77fb8
+taaracr0.azurecr.io/taar-affine-mcp@sha256:f1bf6918ecb1f01e65911dfcc518cf0a6dd1d90df761fd8a0ddc7292587a97f6
 ```
 
-Source revision: `7954e24ab34744150192846e9a5acff8ab47ce59`.
+Source revision: `d17632c263eca55cf56a2dc4dc12a46abc1b1b37`.
 Built using the existing Azure identity; no registry token or GitHub secret was
 created. The existing `taaracr0-secret` grants pull access to this repository.
 
