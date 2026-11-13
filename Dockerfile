@@ -20,6 +20,11 @@ RUN npm prune --omit=dev
 # ─── Stage 2: runtime ────────────────────────────────────────────────────────
 FROM node:22-alpine@sha256:1314fb30ec37592d5845e5a160d522c0e680972aa534549940b8d73bde88481a AS runtime
 
+ARG SOURCE_REVISION=unknown
+LABEL org.opencontainers.image.source="https://github.com/taar-ai/affine-mcp-server" \
+      org.opencontainers.image.vendor="Taar" \
+      org.opencontainers.image.revision=$SOURCE_REVISION
+
 # Non-root user for security
 RUN addgroup -S -g 10001 affine && adduser -S -u 10001 affine -G affine
 

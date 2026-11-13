@@ -37,6 +37,8 @@ jobs:
           cache-from: type=gha
       - name: Verify delegated image runtime
         run: bash scripts/smoke-internal-image.sh taar-affine-mcp:internal-smoke
+      - name: Verify private TLS frontend
+        run: bash scripts/smoke-internal-tls.sh taar-affine-mcp:internal-smoke
       - name: Log in with repository-scoped ACR token
         uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
@@ -51,6 +53,7 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: taaracr0.azurecr.io/taar-affine-mcp:sha-${{ github.sha }}
+          build-args: SOURCE_REVISION=${{ github.sha }}
           labels: |
             org.opencontainers.image.source=https://github.com/taar-ai/affine-mcp-server
             org.opencontainers.image.revision=${{ github.sha }}

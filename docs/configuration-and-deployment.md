@@ -161,7 +161,7 @@ the transport, HTTP bind/auth/origin values, and all OAuth settings shown here.
 | `AFFINE_MCP_HTTP_TOKEN` | Required for non-loopback bearer mode | none | Shared bearer token for `/mcp`, `/sse`, and `/messages` |
 | `AFFINE_MCP_PUBLIC_BASE_URL` | Required in OAuth mode | none | Public base URL for this MCP server |
 | `AFFINE_OAUTH_ISSUER_URL` | Required in OAuth mode | none | OAuth issuer discovery URL |
-| `AFFINE_OAUTH_METADATA_RELAY_BASE_URL` | No | none | Environment-only origin for a trusted public-metadata relay; GET `/metadata` and `/jwks`, no redirects or caller credentials; HTTP requires cluster DNS or loopback. See `deploy/internal/README.md` in the source checkout. |
+| `AFFINE_OAUTH_METADATA_RELAY_BASE_URL` | No | none | Environment-only origin for a trusted public-metadata relay; GET `/metadata` and `/jwks`, no redirects or caller credentials; HTTP requires cluster DNS, loopback, or exact `http://affine-taar-jwks:8080`. See `deploy/internal/README.md` in the source checkout. |
 | `AFFINE_OAUTH_SCOPES` | No | `mcp` | Scopes advertised for OAuth-protected access |
 | `AFFINE_OAUTH_CLOCK_SKEW_SECONDS` | No | `60` | Positive integer tolerance for OAuth token timestamps |
 | `AFFINE_OAUTH_ALLOW_SERVICE_WRITES` | No | `false` | Explicitly acknowledge write-capable tools using the shared AFFiNE service identity |

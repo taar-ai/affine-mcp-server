@@ -1,4 +1,4 @@
-# Render only after parent review of resource URL, image digest and pod selectors.
+# Render only after parent review of image digest and allowed client selectors.
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -13,19 +13,80 @@ metadata:
   namespace: taar-int-affine
 data:
   MCP_TRANSPORT: http
-  AFFINE_MCP_HTTP_HOST: 0.0.0.0
+  AFFINE_MCP_HTTP_HOST: 127.0.0.1
   PORT: "3000"
   AFFINE_MCP_AUTH_MODE: oauth
   AFFINE_BACKEND_AUTH_MODE: oauth_token_exchange
-  AFFINE_BASE_URL: "http://${AFFINE_SERVICE_NAME}.taar-int-affine.svc.cluster.local:3010"
+  AFFINE_BASE_URL: "http://affine:3010"
   AFFINE_ALLOW_INSECURE_HTTP: "true"
   AFFINE_TOKEN_EXCHANGE_PATH: /api/auth/taar/mcp/token
-  AFFINE_MCP_PUBLIC_BASE_URL: "${MCP_PUBLIC_BASE_URL}"
+  AFFINE_MCP_PUBLIC_BASE_URL: https://affine-mcp.internal.taar.ltd
   AFFINE_OAUTH_ISSUER_URL: https://int30.taar.ltd
   AFFINE_OAUTH_SCOPES: openid email profile
-  AFFINE_OAUTH_METADATA_RELAY_BASE_URL: http://affine-taar-jwks.taar-int-affine.svc.cluster.local:8080
+  AFFINE_OAUTH_METADATA_RELAY_BASE_URL: http://affine-taar-jwks:8080
   AFFINE_TOOL_PROFILE: authoring
   XDG_CONFIG_HOME: /tmp/affine-mcp
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: affine-mcp-internal
+  namespace: taar-int-affine
+spec:
+  secretName: affine-mcp-internal-tls
+  dnsNames:
+    - affine-mcp.internal.taar.ltd
+  issuerRef:
+    name: letsencrypt-cloudflare
+    kind: ClusterIssuer
+    group: cert-manager.io
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: affine-mcp-tls
+  namespace: taar-int-affine
+data:
+  nginx.conf: |
+    worker_processes 1;
+    pid /tmp/nginx.pid;
+    error_log /dev/stderr warn;
+    events { worker_connections 1024; }
+    http {
+      access_log off;
+      server_tokens off;
+      client_body_temp_path /tmp/client_body;
+      proxy_temp_path /tmp/proxy;
+      fastcgi_temp_path /tmp/fastcgi;
+      uwsgi_temp_path /tmp/uwsgi;
+      scgi_temp_path /tmp/scgi;
+      server {
+        listen 8443 ssl;
+        server_name affine-mcp.internal.taar.ltd;
+        ssl_certificate /etc/nginx/tls/tls.crt;
+        ssl_certificate_key /etc/nginx/tls/tls.key;
+        ssl_protocols TLSv1.2 TLSv1.3;
+        ssl_session_tickets off;
+        client_max_body_size 4m;
+        if ($host != affine-mcp.internal.taar.ltd) { return 421; }
+        location / {
+          proxy_pass http://127.0.0.1:3000;
+          proxy_http_version 1.1;
+          proxy_set_header Host affine-mcp.internal.taar.ltd;
+          proxy_set_header X-Forwarded-Proto https;
+          proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+          proxy_set_header Connection "";
+          proxy_buffering off;
+          proxy_request_buffering off;
+          proxy_read_timeout 3600s;
+          proxy_send_timeout 3600s;
+        }
+      }
+    }
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -46,6 +107,11 @@ spec:
     spec:
       serviceAccountName: affine-mcp
       automountServiceAccountToken: false
+      imagePullSecrets:
+        - name: taaracr0-secret
+      nodeSelector:
+        location: ahd
+        workload: gp
       terminationGracePeriodSeconds: 20
       securityContext:
         runAsNonRoot: true
@@ -77,26 +143,75 @@ spec:
               cpu: "1"
               memory: 512Mi
           startupProbe:
-            httpGet:
-              path: /healthz
-              port: http
+            exec:
+              command: [wget, -q, -T, "1", -O, /dev/null, "http://127.0.0.1:3000/healthz"]
             periodSeconds: 2
             failureThreshold: 30
           livenessProbe:
-            httpGet:
-              path: /healthz
-              port: http
+            exec:
+              command: [wget, -q, -T, "1", -O, /dev/null, "http://127.0.0.1:3000/healthz"]
             periodSeconds: 20
           readinessProbe:
-            httpGet:
-              path: /readyz
-              port: http
+            exec:
+              command: [wget, -q, -T, "11", -O, /dev/null, "http://127.0.0.1:3000/readyz"]
             timeoutSeconds: 12
             periodSeconds: 20
           volumeMounts:
             - name: tmp
               mountPath: /tmp
+        - name: tls
+          image: nginx@sha256:a8b39bd9cf0f83869a2162827a0caf6137ddf759d50a171451b335cecc87d236
+          command: [/bin/sh, -ec]
+          args:
+            - |
+              while sleep 3600; do nginx -t -q && nginx -s reload; done &
+              exec nginx -g 'daemon off;'
+          ports:
+            - name: https
+              containerPort: 8443
+          securityContext:
+            runAsUser: 101
+            runAsGroup: 101
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          readinessProbe:
+            tcpSocket:
+              port: https
+          livenessProbe:
+            tcpSocket:
+              port: https
+          volumeMounts:
+            - name: nginx-config
+              mountPath: /etc/nginx/nginx.conf
+              subPath: nginx.conf
+              readOnly: true
+            - name: tls
+              mountPath: /etc/nginx/tls
+              readOnly: true
+            - name: nginx-tmp
+              mountPath: /tmp
       volumes:
+        - name: nginx-config
+          configMap:
+            name: affine-mcp-tls
+        - name: tls
+          secret:
+            secretName: affine-mcp-internal-tls
+            defaultMode: 0440
+        - name: nginx-tmp
+          emptyDir:
+            medium: Memory
+            sizeLimit: 8Mi
         - name: tmp
           emptyDir:
             medium: Memory
@@ -112,9 +227,9 @@ spec:
   selector:
     app.kubernetes.io/name: affine-mcp
   ports:
-    - name: http
-      port: 3000
-      targetPort: http
+    - name: https
+      port: 443
+      targetPort: https
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -130,13 +245,13 @@ spec:
     - from:
         - namespaceSelector:
             matchLabels:
-              kubernetes.io/metadata.name: "${MCP_CLIENT_NAMESPACE}"
+              kubernetes.io/metadata.name: taar-internal
           podSelector:
             matchLabels:
-              app.kubernetes.io/name: "${MCP_CLIENT_POD_LABEL}"
+              app.kubernetes.io/name: openai-mcp-gateway
       ports:
         - protocol: TCP
-          port: 3000
+          port: 8443
   egress:
     - to:
         - namespaceSelector:
@@ -153,14 +268,14 @@ spec:
     - to:
         - podSelector:
             matchLabels:
-              app.kubernetes.io/name: "${AFFINE_POD_LABEL}"
+              app.kubernetes.io/name: affine
       ports:
         - protocol: TCP
           port: 3010
     - to:
         - podSelector:
             matchLabels:
-              app.kubernetes.io/name: "${ISSUER_RELAY_POD_LABEL}"
+              app.kubernetes.io/name: affine-taar-jwks
       ports:
         - protocol: TCP
           port: 8080

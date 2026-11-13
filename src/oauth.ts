@@ -119,7 +119,8 @@ export function validateOAuthConfig(config: OAuthConfig, opts: { allowAnyOrigin:
 function validateMetadataRelayUrl(value: string): URL {
   const url = new URL(value);
   const privateHttp = url.protocol === "http:"
-    && (url.hostname.endsWith(".svc.cluster.local") || isLoopbackHostname(url.hostname));
+    && (url.hostname.endsWith(".svc.cluster.local") || isLoopbackHostname(url.hostname)
+      || url.origin === "http://affine-taar-jwks:8080");
   if ((url.protocol !== "https:" && !privateHttp)
     || url.username || url.password || url.search || url.hash || url.pathname !== "/") {
     throw new Error("AFFINE_OAUTH_METADATA_RELAY_BASE_URL requires an HTTPS origin or an explicit cluster-DNS HTTP origin.");

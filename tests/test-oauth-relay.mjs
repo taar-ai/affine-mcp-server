@@ -60,6 +60,8 @@ try {
     assert.throws(() => validateOAuthConfig({ ...config, metadataRelayBaseUrl: url }, { allowAnyOrigin: false }));
   }
   validateOAuthConfig({ ...config, metadataRelayBaseUrl: "http://relay.ns.svc.cluster.local:8080" }, { allowAnyOrigin: false });
+  validateOAuthConfig({ ...config, metadataRelayBaseUrl: "http://affine-taar-jwks:8080" }, { allowAnyOrigin: false });
+  assert.throws(() => validateOAuthConfig({ ...config, metadataRelayBaseUrl: "http://affine-taar-jwks:8081" }, { allowAnyOrigin: false }));
   assert.throws(() => validateOAuthConfig({ ...config, publicBaseUrl: "http://affine-mcp.ns.svc.cluster.local" }, { allowAnyOrigin: false }), /HTTPS/);
   await assert.rejects(probeOAuthReadiness(config));
   mode = "wrong-issuer";

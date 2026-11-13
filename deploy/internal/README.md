@@ -1,22 +1,28 @@
-# Internal Taar deployment (pending resource URL approval)
+# Internal Taar deployment (pending manifest review)
 
 This directory stages the delegated deployment in namespace `taar-int-affine`.
-It creates only a ClusterIP service. It has no ingress, NodePort, LoadBalancer,
-shared AFFiNE account, credential secret, or Kubernetes API token mount.
-Do not apply the template until the parent reviews its rendered values and
-authorizes the cluster change. No cluster resources have been changed by preparing it.
+The canonical resource is `https://affine-mcp.internal.taar.ltd/mcp`.
+It creates a ClusterIP service on 443 with a non-root nginx TLS sidecar on 8443,
+and a DNS01 Certificate using the existing `letsencrypt-cloudflare` ClusterIssuer.
+It has no Ingress, NodePort, LoadBalancer, persistent volume, shared AFFiNE
+account, or Kubernetes API token mount. No public A record is needed. The parent
+owns the exact-host private CoreDNS override pointing to the Service ClusterIP.
+Do not apply until parent review and authorization. Preparing these files does
+not deploy any cluster resources.
 
 ## Required parent contracts
 
-- Supply the exact MCP resource URL and corresponding base URL. The current
-  validator requires HTTPS outside loopback. The template therefore requires a
-  private TLS gateway and valid certificate if HTTPS is chosen. It does not
-  provision that gateway or choose a domain. Kubernetes DNS over HTTP remains
-  blocked until a separately reviewed, explicit hostname-pinned cluster mode
-  is implemented; do not disable TLS verification or the default HTTPS check.
-- Confirm AFFiNE service name and pod `app.kubernetes.io/name` label, relay pod
-  label, and the allowed client/gateway namespace and pod label. The label keys
-  in the template must be adapted if the existing workloads use other keys.
+- MCP pod label is `app.kubernetes.io/name=affine-mcp` in `taar-int-affine`.
+  Only `taar-internal` pods labeled
+  `app.kubernetes.io/name=openai-mcp-gateway` may reach TCP 8443. These gateway
+  labels were verified live. Any additional test client requires separate review.
+- AFFiNE is Service `affine:3010`, with pod label
+  `app.kubernetes.io/name=affine`. Relay is Service `affine-taar-jwks:8080`, with
+  pod label `app.kubernetes.io/name=affine-taar-jwks`, in the same namespace.
+  These service selectors were verified live. The parent owns relay ingress
+  from MCP pods and any backend ingress policy needed for port 3010.
+- `taaracr0-secret` exists in the namespace and is referenced for image pulls.
+  Pod scheduling is pinned to `location=ahd`, `workload=gp`.
 - Confirm DNS uses kube-system pods labeled `k8s-app=kube-dns`. Node-local DNS
   needs a reviewed, specific DNS destination adjustment.
 - AFFiNE must implement `POST /api/auth/taar/mcp/token` with exact issuer/resource
@@ -29,11 +35,12 @@ authorizes the cluster change. No cluster resources have been changed by prepari
 
 ## Issuer relay contract
 
-The parent-owned service `affine-taar-jwks:8080` must serve GET `/jwks` **and**
-GET `/metadata`. `/metadata` must return the issuer's authorization-server or
-OpenID discovery JSON unchanged, including canonical `issuer` and `jwks_uri`.
-The existing `/jwks` route alone is insufficient. Both routes must proxy only
-their exact HTTPS issuer paths with certificate verification, no redirects,
+The parent-owned service `affine-taar-jwks:8080` serves GET `/jwks` and
+GET `/metadata`. `/metadata` returns exactly
+`https://int30.taar.ltd/.well-known/oauth-authorization-server`, unchanged,
+including canonical `issuer` and `jwks_uri`. `/jwks` returns exactly
+`https://int30.taar.ltd/.well-known/jwks.json`. Both routes must proxy only
+these exact HTTPS issuer paths with certificate verification, no redirects,
 no client Authorization header, and no general forward-proxy capability.
 Block other methods and paths at the relay. This repo does not deploy the relay.
 
@@ -45,6 +52,21 @@ Relay failures do not fall back to public egress. The MCP NetworkPolicy permits
 only DNS, AFFiNE TCP 3010, and relay TCP 8080; it grants no public TCP 443 access.
 NetworkPolicies are additive: the parent must also check that another policy
 does not grant this pod broader access, and that the CNI enforces these rules.
+
+The configured relay base is `http://affine-taar-jwks:8080`. That exact short
+origin is allowed explicitly; other short HTTP origins or ports are rejected.
+The ordinary HTTPS requirement for OAuth issuer/resource URLs is unchanged.
+
+## TLS runtime
+
+The nginx image is pinned to the existing relay's digest
+`sha256:a8b39bd9cf0f83869a2162827a0caf6137ddf759d50a171451b335cecc87d236`.
+MCP listens only on loopback TCP 3000; the Service targets nginx TCP 8443.
+Both containers have read-only roots, dropped capabilities and bounded memory
+`emptyDir` scratch space. All nginx temp paths are under `/tmp`. The TLS
+Secret `affine-mcp-internal-tls` is mounted 0440, readable by nginx UID 101
+through pod fsGroup 10001. Certificates are reloaded hourly after nginx config
+validation. Access logging is disabled so request URLs/tokens are not logged.
 
 ## Image build
 
@@ -58,6 +80,7 @@ npm ci
 npm test
 docker build --platform linux/arm64 -t taar-affine-mcp:delegated-local .
 bash scripts/smoke-internal-image.sh taar-affine-mcp:delegated-local
+bash scripts/smoke-internal-tls.sh taar-affine-mcp:delegated-local
 ```
 
 The manual `Taar Internal Image` GitHub workflow builds both amd64 and arm64
@@ -66,23 +89,22 @@ from the selected repository ref after tests, publishes only
 `taaracr0.azurecr.io/taar-affine-mcp@sha256:...` reference in its job summary.
 Deploy that digest, never the mutable tag. No deployment occurs in the workflow.
 
-Registry credential creation is pending parent approval. If approved, use an
+Source image publication is authorized. Prefer `az acr build` under the existing
+Azure identity without creating a new credential. If the GitHub workflow needs
+a dedicated credential, use an
 ACR scope map limited to `repositories/taar-affine-mcp/content/read` and
 `repositories/taar-affine-mcp/content/write`; store its token username/password
 in GitHub secrets `TAAR_AFFINE_MCP_ACR_USERNAME` and
 `TAAR_AFFINE_MCP_ACR_PASSWORD` without printing values. Do not enable ACR admin
-credentials. Cluster pull permission must already cover this repository or be
-reviewed separately. Preparing this workflow creates no registry credentials.
+credentials. Preparing this workflow creates no registry credentials.
 
 ## Render and review
 
-Set the following environment variables from confirmed parent values:
-`MCP_PUBLIC_BASE_URL`, `MCP_IMAGE_DIGEST` (including `sha256:`),
-`AFFINE_SERVICE_NAME`, `AFFINE_POD_LABEL`, `ISSUER_RELAY_POD_LABEL`,
-`MCP_CLIENT_NAMESPACE`, and `MCP_CLIENT_POD_LABEL`.
+Set `MCP_IMAGE_DIGEST` (including `sha256:`) to the published image digest.
+All hostname and label values are fixed in the template for parent review.
 
 ```sh
-envsubst '${MCP_PUBLIC_BASE_URL} ${MCP_IMAGE_DIGEST} ${AFFINE_SERVICE_NAME} ${AFFINE_POD_LABEL} ${ISSUER_RELAY_POD_LABEL} ${MCP_CLIENT_NAMESPACE} ${MCP_CLIENT_POD_LABEL}' \
+envsubst '${MCP_IMAGE_DIGEST}' \
   < deploy/internal/deployment.yaml.template > /tmp/affine-mcp-reviewed.yaml
 ```
 
@@ -102,3 +124,7 @@ only their own existing AFFiNE access, with cross-subject session reuse denied.
 Verify relay logs contain only metadata/JWKS GET requests and no tokens, and
 prove public egress is denied. Roll back to the prior reviewed image digest if
 rollout or delegated checks fail. Never create production test identities.
+
+Wait for Certificate readiness and validate the real TLS chain before client
+tests. The local TLS smoke uses an explicitly trusted disposable CA fixture;
+it does not disable TLS verification or contact production identity endpoints.
