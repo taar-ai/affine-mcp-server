@@ -292,7 +292,8 @@ export async function startHttpMcpServer(
   const requestPrincipalSubject = (req: Request): string | undefined => {
     const authInfo = (req as Request & { auth?: AuthInfo }).auth;
     const subject = authInfo?.extra?.subject;
-    return typeof subject === "string" && subject.trim() ? subject : undefined;
+    return typeof subject === "string" && subject.trim()
+      ? JSON.stringify([authInfo?.extra?.issuer, subject]) : undefined;
   };
 
   const requireDelegatedPrincipal = (req: Request, res: Response): string | undefined => {

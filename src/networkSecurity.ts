@@ -44,6 +44,21 @@ export function validateOAuthResourceUrl(value: string): string {
   return value;
 }
 
+export function resolveTokenExchangeUrl(baseUrl: string, exchangePath: string, explicitUrl?: string): URL {
+  let url: URL;
+  try {
+    url = new URL(explicitUrl ?? exchangePath, explicitUrl === undefined ? `${baseUrl.replace(/\/$/, "")}/` : undefined);
+  } catch {
+    throw new Error("AFFINE_TOKEN_EXCHANGE_URL/PATH must be a valid URL on the configured AFFINE_BASE_URL origin.");
+  }
+  if (url.origin !== new URL(baseUrl).origin || !["https:", "http:"].includes(url.protocol)
+    || url.username || url.password || /[?#*\\\s]/.test(explicitUrl ?? exchangePath)
+    || (explicitUrl !== undefined && url.href !== explicitUrl)) {
+    throw new Error("AFFINE_TOKEN_EXCHANGE_URL/PATH must resolve to the configured AFFINE_BASE_URL origin without userinfo, query, fragment, or wildcards.");
+  }
+  return url;
+}
+
 /** AFFiNE Cloud is served from the `affine.pro` registrable domain. */
 const AFFINE_CLOUD_DOMAIN = "affine.pro";
 

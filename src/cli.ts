@@ -377,6 +377,7 @@ function buildEffectiveConfigSummary(effective: ServerConfig = loadConfig()) {
     oauthScopes: effective.oauthScopes,
     oauthClockSkewSeconds: effective.oauthClockSkewSeconds,
     tokenExchangePath: effective.tokenExchangePath,
+    tokenExchangeUrl: effective.tokenExchangeUrl || null,
     tokenExchangeTimeoutMs: effective.tokenExchangeTimeoutMs,
     tokenExchangeCacheMaxEntries: effective.tokenExchangeCacheMaxEntries,
     transportMode: effective.transportMode,
@@ -405,6 +406,7 @@ function buildEffectiveConfigSummary(effective: ServerConfig = loadConfig()) {
       oauthScopes: getConfigValueSource("AFFINE_OAUTH_SCOPES", stored, "mcp"),
       oauthClockSkewSeconds: getConfigValueSource("AFFINE_OAUTH_CLOCK_SKEW_SECONDS", stored, "60"),
       tokenExchangePath: getConfigValueSource("AFFINE_TOKEN_EXCHANGE_PATH", stored, "/api/auth/taar/mcp/token"),
+      tokenExchangeUrl: getConfigValueSource("AFFINE_TOKEN_EXCHANGE_URL", stored),
       tokenExchangeTimeoutMs: getConfigValueSource("AFFINE_TOKEN_EXCHANGE_TIMEOUT_MS", stored, "5000"),
       tokenExchangeCacheMaxEntries: getConfigValueSource("AFFINE_TOKEN_EXCHANGE_CACHE_MAX_ENTRIES", stored, "128"),
       transportMode: getConfigValueSource("MCP_TRANSPORT", stored, "stdio"),
@@ -1604,6 +1606,7 @@ async function doctor(args: string[]) {
       const oauthConfig = {
         publicBaseUrl: effective.publicBaseUrl,
         resourceUrl: effective.oauthResourceUrl,
+        delegatedUser: effective.backendAuthMode === "oauth_token_exchange",
         issuerUrl: effective.oauthIssuerUrl,
         metadataRelayBaseUrl: effective.oauthMetadataRelayBaseUrl,
         scopes: effective.oauthScopes,
@@ -1699,6 +1702,7 @@ function getSnippetEnv(): Record<string, string> {
     if (effective.backendAuthMode === "oauth_token_exchange") {
       env.AFFINE_BACKEND_AUTH_MODE = "oauth_token_exchange";
       env.AFFINE_TOKEN_EXCHANGE_PATH = effective.tokenExchangePath;
+      if (effective.tokenExchangeUrl) env.AFFINE_TOKEN_EXCHANGE_URL = effective.tokenExchangeUrl;
     }
     if (effective.publicBaseUrl) env.AFFINE_MCP_PUBLIC_BASE_URL = effective.publicBaseUrl;
     if (effective.oauthIssuerUrl) env.AFFINE_OAUTH_ISSUER_URL = effective.oauthIssuerUrl;

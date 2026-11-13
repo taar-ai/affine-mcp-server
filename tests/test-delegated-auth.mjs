@@ -16,7 +16,7 @@ const server = http.createServer(async (req, res) => {
   }
   if (req.headers.authorization === "Bearer rejected-token") {
     res.writeHead(403, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ error: "not_an_affine_member" }));
+    res.end(JSON.stringify({ error: "not_an_affine_member", reflected_secret: "rejected-token" }));
     return;
   }
   await new Promise((resolve) => setTimeout(resolve, 10));
@@ -28,7 +28,7 @@ const server = http.createServer(async (req, res) => {
   res.end(JSON.stringify({
     access_token: `affine-${incoming}`,
     token_type: "Bearer",
-    expires_in: 300,
+    expires_in: incoming === "long-lived" ? 301 : 300,
   }));
 });
 
@@ -70,6 +70,7 @@ try {
     () => auth.ready(),
   );
   assert.deepEqual(cachedAlice, alice);
+  await assert.rejects(() => runWithDelegatedAuth({ ...authInfo("alice-token", "alice"), expiresAt: 1 }, () => auth.ready()), /expired/);
   assert.equal(
     requests.filter((request) => request.authorization === "Bearer alice-token").length,
     1,
@@ -89,8 +90,18 @@ try {
 
   await assert.rejects(
     () => runWithDelegatedAuth(authInfo("rejected-token", "mallory"), () => auth.ready()),
-    (error) => error?.code === "access_denied" && /HTTP 403/.test(error.message),
+    (error) => error?.code === "access_denied" && /HTTP 403/.test(error.message) && !error.message.includes("rejected-token"),
   );
+  const explicit = new DelegatedAffineAuth({ baseUrl, exchangePath: "/ignored", exchangeUrl: `${baseUrl}/exchange`, timeoutMs: 1_000 });
+  await runWithDelegatedAuth(authInfo("original-gateway-bearer", "existing-user"), () => explicit.ready());
+  assert(requests.some(r => r.url === "/exchange" && r.authorization === "Bearer original-gateway-bearer"));
+  for (const exchangeUrl of ["", "/relative", "https://example.com/exchange", `${baseUrl}/exchange?x=1`, `${baseUrl}/exchange#x`, baseUrl.replace("http://", "http://user:pass@") + "/exchange"]) {
+    assert.throws(() => new DelegatedAffineAuth({ baseUrl, exchangePath: "/exchange", exchangeUrl, timeoutMs: 1_000 }));
+  }
+  await assert.rejects(() => runWithDelegatedAuth(authInfo("long-lived", "existing-user"), () => explicit.ready()), /expires_in/);
+  await runWithDelegatedAuth(authInfo("same-token", "principal-one"), () => explicit.ready());
+  await runWithDelegatedAuth(authInfo("same-token", "principal-two"), () => explicit.ready());
+  assert.equal(requests.filter(r => r.authorization === "Bearer same-token").length, 2, "different principal contexts never share a cached exchange");
 
   const redirectingAuth = new DelegatedAffineAuth({
     baseUrl,

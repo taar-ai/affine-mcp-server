@@ -31,6 +31,8 @@ MCP_ID="$(docker run -d --read-only --cap-drop ALL --security-opt no-new-privile
   -p 127.0.0.1::8443 --tmpfs /tmp:rw,noexec,nosuid,size=32m,uid=10001,gid=10001 \
   -e XDG_CONFIG_HOME=/tmp/affine-mcp -e AFFINE_MCP_HTTP_HOST=127.0.0.1 \
   -e AFFINE_MCP_AUTH_MODE=oauth -e AFFINE_BACKEND_AUTH_MODE=oauth_token_exchange \
+  -e AFFINE_BASE_URL=http://127.0.0.1:3010 \
+  -e AFFINE_TOKEN_EXCHANGE_URL=http://127.0.0.1:3010/api/auth/taar/mcp/token \
   -e AFFINE_MCP_PUBLIC_BASE_URL=https://affine-mcp.internal.taar.ltd \
   -e AFFINE_OAUTH_RESOURCE_URL=https://tunnel.example.test/v1/mcp/tunnel_fixture \
   -e AFFINE_OAUTH_ISSUER_URL=https://issuer.example.test \

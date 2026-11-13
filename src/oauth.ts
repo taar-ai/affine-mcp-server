@@ -7,6 +7,7 @@ import { validateOAuthResourceUrl } from "./networkSecurity.js";
 export type OAuthConfig = {
   publicBaseUrl: string;
   resourceUrl?: string;
+  delegatedUser?: boolean;
   issuerUrl: string;
   scopes: string[];
   clockSkewSeconds: number;
@@ -236,7 +237,7 @@ export async function verifyOAuthAccessToken(token: string, config: OAuthConfig)
   const { payload } = await jwtVerify(token, getJwks(metadata, config), {
     issuer: metadata.issuer,
     audience: buildAudienceList(config),
-    algorithms: [...ALLOWED_JWT_ALGORITHMS],
+    algorithms: config.delegatedUser ? ["RS256"] : [...ALLOWED_JWT_ALGORITHMS],
     clockTolerance: config.clockSkewSeconds,
   });
 
@@ -247,6 +248,10 @@ export async function verifyOAuthAccessToken(token: string, config: OAuthConfig)
 
   if (typeof payload.exp !== "number" || !Number.isFinite(payload.exp)) {
     throw new Error("Token does not include a valid exp claim");
+  }
+  if (config.delegatedUser && (payload.email_verified !== true || payload.token_type !== "access"
+    || typeof payload.sub !== "string" || !payload.sub.trim() || payload.exp * 1000 <= Date.now())) {
+    throw new Error("Delegated OAuth requires an unexpired verified-email access token with a user subject");
   }
 
   const scopes = getScopesFromPayload(payload);

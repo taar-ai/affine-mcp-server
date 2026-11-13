@@ -161,12 +161,13 @@ the transport, HTTP bind/auth/origin values, and all OAuth settings shown here.
 | `AFFINE_MCP_HTTP_TOKEN` | Required for non-loopback bearer mode | none | Shared bearer token for `/mcp`, `/sse`, and `/messages` |
 | `AFFINE_MCP_PUBLIC_BASE_URL` | Required in OAuth mode | none | Public base URL for this MCP server |
 | `AFFINE_OAUTH_ISSUER_URL` | Required in OAuth mode | none | OAuth issuer discovery URL |
-| `AFFINE_OAUTH_RESOURCE_URL` | No; required for a dedicated public tunnel | derived from base URL | Exact canonical HTTPS resource URL; no userinfo, query, fragment or wildcards. Preserved without appending `/mcp`. When set, only an identical single-string JWT audience is accepted; arrays and base/internal alternatives are rejected. Metadata and request `AuthInfo.resource` use this URL; local discovery routes still use the base URL. |
+| `AFFINE_OAUTH_RESOURCE_URL` | No; required for gateway forwarding | derived from base URL | Exact canonical HTTPS resource URL of the existing consuming tunnel; no userinfo, query, fragment or wildcards. Preserved without appending `/mcp`. When set, only an identical single-string JWT audience is accepted; arrays and base/internal alternatives are rejected. Metadata and request `AuthInfo.resource` use this URL; local discovery routes still use the base URL. |
 | `AFFINE_OAUTH_METADATA_RELAY_BASE_URL` | No | none | Environment-only origin for a trusted public-metadata relay; GET `/metadata` and `/jwks`, no redirects or caller credentials; HTTP requires cluster DNS, loopback, or exact `http://affine-taar-jwks:8080`. See `deploy/internal/README.md` in the source checkout. |
 | `AFFINE_OAUTH_SCOPES` | No | `mcp` | Scopes advertised for OAuth-protected access |
 | `AFFINE_OAUTH_CLOCK_SKEW_SECONDS` | No | `60` | Positive integer tolerance for OAuth token timestamps |
 | `AFFINE_OAUTH_ALLOW_SERVICE_WRITES` | No | `false` | Explicitly acknowledge write-capable tools using the shared AFFiNE service identity |
 | `AFFINE_TOKEN_EXCHANGE_PATH` | No | `/api/auth/taar/mcp/token` | Same-origin AFFiNE endpoint used by `oauth_token_exchange` mode |
+| `AFFINE_TOKEN_EXCHANGE_URL` | No | unset | Absolute endpoint overriding the exchange path; must share the validated AFFiNE base origin, without userinfo, query, fragment, wildcard or redirects. Internal HTTP still needs `AFFINE_ALLOW_INSECURE_HTTP=true`. Only the original authenticated caller bearer is sent; no service credential fallback. |
 | `AFFINE_TOKEN_EXCHANGE_TIMEOUT_MS` | No | `5000` | Positive integer deadline for a delegated token exchange |
 | `AFFINE_TOKEN_EXCHANGE_CACHE_MAX_ENTRIES` | No | `128` | Maximum cached short-lived exchanges, keyed by an incoming-token digest |
 

@@ -17,9 +17,9 @@ data:
   PORT: "3000"
   AFFINE_MCP_AUTH_MODE: oauth
   AFFINE_BACKEND_AUTH_MODE: oauth_token_exchange
-  AFFINE_BASE_URL: "http://affine:3010"
+  AFFINE_BASE_URL: "http://affine-api:3010"
   AFFINE_ALLOW_INSECURE_HTTP: "true"
-  AFFINE_TOKEN_EXCHANGE_PATH: /api/auth/taar/mcp/token
+  AFFINE_TOKEN_EXCHANGE_URL: http://affine-api:3010/api/auth/taar/mcp/token
   AFFINE_MCP_PUBLIC_BASE_URL: https://affine-mcp.internal.taar.ltd
   AFFINE_OAUTH_ISSUER_URL: https://int30.taar.ltd
   AFFINE_OAUTH_SCOPES: openid email profile
@@ -127,7 +127,7 @@ spec:
           envFrom:
             - configMapRef:
                 name: affine-mcp
-          # Parent supplies the exact dedicated public tunnel URL after creation.
+          # Parent supplies the exact EXISTING TaarInternal tunnel resource.
           # A missing ConfigMap/key prevents startup; no internal-audience fallback.
           env:
             - name: AFFINE_OAUTH_RESOURCE_URL
@@ -257,7 +257,7 @@ spec:
               kubernetes.io/metadata.name: taar-internal
           podSelector:
             matchLabels:
-              app.kubernetes.io/name: openai-affine-mcp-tunnel
+              app.kubernetes.io/name: openai-mcp-gateway
       ports:
         - protocol: TCP
           port: 8443

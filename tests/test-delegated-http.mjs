@@ -85,6 +85,7 @@ const child = spawn(process.execPath, ["dist/index.js"], {
     AFFINE_API_TOKEN: "",
     AFFINE_BACKEND_AUTH_MODE: "oauth_token_exchange",
     AFFINE_BASE_URL: affineBaseUrl,
+    AFFINE_TOKEN_EXCHANGE_URL: `${affineBaseUrl}/api/auth/taar/mcp/token`,
     AFFINE_COOKIE: "",
     AFFINE_EMAIL: "",
     AFFINE_MCP_AUTH_MODE: "oauth",
@@ -114,8 +115,8 @@ async function waitForHealth() {
   throw new Error(`MCP server did not become healthy: ${stderr}`);
 }
 
-async function mintToken(subject) {
-  return await new SignJWT({ scope: "mcp", client_id: "chatgpt" })
+async function mintToken(subject, claims = {}) {
+  return await new SignJWT({ scope: "mcp", client_id: "gateway", email_verified: true, token_type: "access", ...claims })
     .setProtectedHeader({ alg: "RS256", kid: String(publicJwk.kid) })
     .setIssuer(issuerBaseUrl)
     .setSubject(subject)
@@ -158,6 +159,16 @@ try {
   assert(sessionId, "initialize response must include an MCP session ID");
 
   const bobToken = await mintToken("bob");
+  for (const method of ["GET", "DELETE"]) {
+    const result = await fetch(`${publicBaseUrl}/mcp`, { method, headers: headers(bobToken, sessionId) });
+    assert.equal(result.status, 403, `${method} cannot access another principal session`);
+    await result.arrayBuffer();
+  }
+  for (const claims of [{email_verified:false},{email_verified:"true"},{email_verified:undefined},{token_type:"id"},{token_type:undefined}]) {
+    const result = await fetch(`${publicBaseUrl}/mcp`, { method:"POST", headers:headers(await mintToken("alice", claims), sessionId), body:JSON.stringify({jsonrpc:"2.0",method:"notifications/initialized"}) });
+    assert.equal(result.status, 401);
+    await result.arrayBuffer();
+  }
   const crossUser = await fetch(`${publicBaseUrl}/mcp`, {
     method: "POST",
     headers: headers(bobToken, sessionId),
@@ -173,6 +184,28 @@ try {
   });
   const sameUserBody = await sameUser.text();
   assert.equal(sameUser.status, 202, sameUserBody);
+  const refreshed = await fetch(`${publicBaseUrl}/mcp`, {
+    method: "POST", headers: headers(await mintToken("alice", { jti: "refreshed-fixture" }), sessionId),
+    body: JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }),
+  });
+  assert.equal(refreshed.status, 202, "a refreshed bearer for the same verified issuer/subject can retain its session");
+  await refreshed.arrayBuffer();
+
+  const forbidden = spawn(process.execPath, ["dist/index.js"], {
+    cwd: projectDirectory,
+    env: { ...process.env, AFFINE_BASE_URL: affineBaseUrl, AFFINE_BACKEND_AUTH_MODE: "oauth_token_exchange",
+      AFFINE_MCP_AUTH_MODE: "oauth", AFFINE_API_TOKEN: "forbidden-service-fixture", MCP_TRANSPORT: "http",
+      XDG_CONFIG_HOME: `/tmp/affine-forbidden-service-${process.pid}` },
+    stdio: ["ignore", "ignore", "pipe"],
+  });
+  let forbiddenStderr = "";
+  forbidden.stderr.on("data", chunk => { forbiddenStderr += chunk; });
+  const deadline = setTimeout(() => forbidden.kill("SIGKILL"), 3000);
+  const code = await new Promise(resolve => forbidden.once("exit", resolve));
+  clearTimeout(deadline);
+  assert.notEqual(code, 0);
+  assert.match(forbiddenStderr, /cannot be combined with AFFINE_API_TOKEN/);
+  assert(!forbiddenStderr.includes("forbidden-service-fixture"));
 } finally {
   if (child.exitCode === null) {
     child.kill("SIGTERM");

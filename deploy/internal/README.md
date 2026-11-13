@@ -2,8 +2,9 @@
 
 This directory stages the delegated deployment in namespace `taar-int-affine`.
 The internal target is `https://affine-mcp.internal.taar.ltd/mcp`; it is not the
-OAuth audience for ChatGPT. The consuming client is ChatGPT through a dedicated
-OpenAI tunnel. Its exact public MCP URL is not yet known and must not be invented.
+OAuth audience. The authoritative path is ChatGPT -> EXISTING TaarInternal
+tunnel -> existing Taar MCP gateway -> this internal adapter -> AFFiNE API.
+There is no new tunnel, callback or direct ChatGPT access to this adapter.
 It creates a ClusterIP service on 443 with a non-root nginx TLS sidecar on 8443,
 and a DNS01 Certificate using the existing `letsencrypt-cloudflare` ClusterIssuer.
 It has no Ingress, NodePort, LoadBalancer, persistent volume, shared AFFiNE
@@ -14,13 +15,21 @@ not deploy any cluster resources.
 
 ## Required parent contracts
 
-- After creating the dedicated tunnel, supply its exact public MCP URL as
+Verified existing resource (parent-supplied, no new tunnel):
+
+```text
+https://tunnel-service.gateway.unified-0.internal.api.openai.org/v1/mcp/tunnel_6aa164e03b0c81918f288517e6e55002
+```
+
+- Supply the verified exact EXISTING TaarInternal tunnel MCP resource as
   ConfigMap `affine-mcp-resource`, key `OAUTH_RESOURCE`, in `taar-int-affine`.
   The manifest requires this key for `AFFINE_OAUTH_RESOURCE_URL`; a missing map
   or key prevents the pod starting, and an empty/invalid value fails config
   validation. This repository does not create or populate that ConfigMap.
   AFFiNE's `TAAR_MCP_OAUTH_RESOURCE` references the same shared key. Use the
-  identical URL in the issuer/tunnel callback and AFFiNE audience policy.
+  identical existing resource in the gateway and AFFiNE audience policy. The
+  gateway forwards the ORIGINAL authenticated bearer, owns `affine.*` tool
+  proxying, discovery, attribution and bypass prevention. No callback is added.
   Do not append `/mcp` to a tunnel path such as `/v1/mcp/tunnel_ID`.
   Explicit resources require canonical HTTPS with no userinfo, query, fragment
   or wildcard. JWT `aud` must be exactly that single string: arrays, different
@@ -28,18 +37,19 @@ not deploy any cluster resources.
   The internal `AFFINE_MCP_PUBLIC_BASE_URL` still determines local routes and
   challenges. Both local `/.well-known/oauth-protected-resource` and
   `/.well-known/oauth-protected-resource/mcp` advertise the external resource.
-  The parent owns how the dedicated tunnel serves these discovery routes and
+  The gateway owns how the existing tunnel serves these discovery routes and
   any external challenge URL rewriting. No public URL is enabled by this change.
 - MCP pod label is `app.kubernetes.io/name=affine-mcp` in `taar-int-affine`.
   Only `taar-internal` pods labeled
-  `app.kubernetes.io/name=openai-affine-mcp-tunnel` may reach TCP 8443. This is
-  the parent-designated dedicated tunnel client. Any additional test client
-  requires separate review; the old shared gateway selector is not retained.
-- AFFiNE is Service `affine:3010`, with pod label
+  `app.kubernetes.io/name=openai-mcp-gateway` may reach TCP 8443. There is no
+  laptop/VPN, public, direct ChatGPT or tunnel-workload access to this adapter.
+- AFFiNE's private API is Service `affine-api:3010`, with pod label
   `app.kubernetes.io/name=affine`. Relay is Service `affine-taar-jwks:8080`, with
   pod label `app.kubernetes.io/name=affine-taar-jwks`, in the same namespace.
-  These service selectors were verified live. The parent owns relay ingress
-  from MCP pods and any backend ingress policy needed for port 3010.
+  The parent owns the new private API Service and ingress policy: only adapter
+  pods reach application port 3010. Public Service `affine` instead targets
+  the parent's nginx port 3012, which denies `/api/auth/taar/mcp` paths. This
+  repository does not create or alter those application resources.
 - `taaracr0-secret` exists in the namespace and is referenced for image pulls.
   Pod scheduling is pinned to `location=ahd`, `workload=gp`.
 - Confirm DNS uses kube-system pods labeled `k8s-app=kube-dns`. Node-local DNS
@@ -48,6 +58,20 @@ not deploy any cluster resources.
   validation, existing-user lookup only, and native per-user tokens lasting at
   most 300 seconds. MCP uses `oauth_token_exchange` and binds requests to the
   authenticated subject. It must never receive a shared backend credential.
+- `AFFINE_TOKEN_EXCHANGE_URL=http://affine-api:3010/api/auth/taar/mcp/token` is an
+  absolute same-origin endpoint. It overrides the legacy path setting and
+  rejects different origins, userinfo, query, fragment, wildcard and redirects.
+  HTTP uses only the existing explicit `AFFINE_ALLOW_INSECURE_HTTP=true` opt-in
+  for the internal AFFiNE origin. The original request bearer is forwarded;
+  user identity, email and roles never come from tool arguments. Exchange
+  failures have no service-account fallback and do not reflect response bodies.
+- In delegated mode the adapter accepts only RS256, `token_type=access`, boolean
+  `email_verified=true`, a nonempty subject and an unexpired token, plus the
+  exact configured string audience and required scopes. The backend owns
+  persistent `(iss, sub)` mapping to existing enabled, verified users and their
+  existing permissions, with no auto-create or global shared account. Native
+  token responses over 300 seconds are rejected. Sessions bind issuer+subject;
+  exchange caches bind original token digest, issuer, subject and resource.
 - Issuer is `https://int30.taar.ltd`, canonical JWKS is
   `https://int30.taar.ltd/.well-known/jwks.json`, and advertised scopes are
   `openid email profile`.

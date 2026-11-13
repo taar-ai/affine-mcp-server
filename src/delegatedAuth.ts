@@ -7,6 +7,7 @@ import { fetch } from "undici";
 import type { AuthSnapshot } from "./authSession.js";
 import { ToolFailure } from "./util/mcp.js";
 import { fetchResponseBody } from "./util/httpResponse.js";
+import { resolveTokenExchangeUrl } from "./networkSecurity.js";
 
 type CachedToken = {
   expiresAt: number;
@@ -28,6 +29,7 @@ export type DelegatedAuthOptions = {
   baseUrl: string;
   cacheMaxEntries?: number;
   exchangePath: string;
+  exchangeUrl?: string;
   timeoutMs: number;
 };
 
@@ -42,11 +44,6 @@ function principalSubject(authInfo: AuthInfo): string | null {
   return typeof authInfo.extra?.subject === "string" && authInfo.extra.subject.trim()
     ? authInfo.extra.subject
     : null;
-}
-
-function sanitizedErrorBody(body: string): string {
-  const compact = body.replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim();
-  return compact.length > 200 ? `${compact.slice(0, 200)}...` : compact;
 }
 
 export function runWithDelegatedAuth<T>(authInfo: AuthInfo | undefined, operation: () => T): T {
@@ -71,10 +68,7 @@ export class DelegatedAffineAuth {
 
   constructor(private readonly options: DelegatedAuthOptions) {
     this.cacheMaxEntries = options.cacheMaxEntries ?? 128;
-    this.exchangeUrl = new URL(options.exchangePath, `${options.baseUrl.replace(/\/$/, "")}/`);
-    if (this.exchangeUrl.origin !== new URL(options.baseUrl).origin) {
-      throw new Error("AFFINE_TOKEN_EXCHANGE_PATH must resolve to the configured AFFINE_BASE_URL origin.");
-    }
+    this.exchangeUrl = resolveTokenExchangeUrl(options.baseUrl, options.exchangePath, options.exchangeUrl);
   }
 
   async ready(): Promise<AuthSnapshot> {
@@ -86,7 +80,10 @@ export class DelegatedAffineAuth {
       );
     }
 
-    const key = tokenDigest(authInfo.token);
+    if (typeof authInfo.expiresAt !== "number" || !Number.isFinite(authInfo.expiresAt) || authInfo.expiresAt * 1000 <= Date.now()) {
+      throw new ToolFailure("The authenticated MCP caller token has expired.", "auth_required");
+    }
+    const key = JSON.stringify([tokenDigest(authInfo.token), authInfo.extra?.issuer, principalSubject(authInfo), authInfo.resource?.href]);
     const now = Date.now();
     const cached = this.cache.get(key);
     if (cached) {
@@ -129,8 +126,7 @@ export class DelegatedAffineAuth {
     );
 
     if (!response.ok) {
-      const detail = sanitizedErrorBody(body);
-      const message = `AFFiNE delegated token exchange returned HTTP ${response.status}${detail ? `: ${detail}` : ""}`;
+      const message = `AFFiNE delegated token exchange returned HTTP ${response.status}`;
       if (response.status === 401) throw new ToolFailure(message, "auth_required");
       if (response.status === 403) throw new ToolFailure(message, "access_denied");
       throw new ToolFailure(message, response.status >= 500 ? "upstream_unavailable" : "auth_required");
@@ -146,7 +142,7 @@ export class DelegatedAffineAuth {
     if (payload.token_type !== "Bearer" || typeof payload.access_token !== "string" || !payload.access_token.trim()) {
       throw new ToolFailure("AFFiNE delegated token exchange returned an invalid bearer token response.", "upstream_unavailable");
     }
-    if (typeof payload.expires_in !== "number" || !Number.isFinite(payload.expires_in) || payload.expires_in <= 0) {
+    if (typeof payload.expires_in !== "number" || !Number.isFinite(payload.expires_in) || payload.expires_in <= 0 || payload.expires_in > 300) {
       throw new ToolFailure("AFFiNE delegated token exchange returned an invalid expires_in value.", "upstream_unavailable");
     }
 

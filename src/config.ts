@@ -7,6 +7,7 @@ import {
   isRemotePlainHttpUrl,
   parseBooleanFlag,
   validateOAuthResourceUrl,
+  resolveTokenExchangeUrl,
 } from "./networkSecurity.js";
 import {
   hasAuthenticationHeader,
@@ -58,6 +59,7 @@ export type ServerConfig = {
   authMode: "bearer" | "oauth";
   backendAuthMode: BackendAuthMode;
   tokenExchangePath: string;
+  tokenExchangeUrl?: string;
   tokenExchangeTimeoutMs: number;
   tokenExchangeCacheMaxEntries: number;
   publicBaseUrl?: string;
@@ -442,6 +444,9 @@ export function loadConfig(): ServerConfig {
   const tokenExchangePath = validateGraphqlPath(
     env("AFFINE_TOKEN_EXCHANGE_PATH", file, "/api/auth/taar/mcp/token")!,
   );
+  const tokenExchangeUrlRaw = process.env.AFFINE_TOKEN_EXCHANGE_URL ?? file.AFFINE_TOKEN_EXCHANGE_URL;
+  const tokenExchangeUrl = tokenExchangeUrlRaw === undefined ? undefined
+    : resolveTokenExchangeUrl(baseUrl, tokenExchangePath, tokenExchangeUrlRaw).href;
   const tokenExchangeTimeoutMs = parsePositiveIntegerEnv(
     "AFFINE_TOKEN_EXCHANGE_TIMEOUT_MS",
     env("AFFINE_TOKEN_EXCHANGE_TIMEOUT_MS", file),
@@ -486,6 +491,7 @@ export function loadConfig(): ServerConfig {
     authMode,
     backendAuthMode,
     tokenExchangePath,
+    tokenExchangeUrl,
     tokenExchangeTimeoutMs,
     tokenExchangeCacheMaxEntries,
     publicBaseUrl,

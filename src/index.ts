@@ -107,6 +107,7 @@ if (usesDelegatedAuth) {
   delegatedAuth = new DelegatedAffineAuth({
     baseUrl: config.baseUrl,
     exchangePath: config.tokenExchangePath,
+    exchangeUrl: config.tokenExchangeUrl,
     timeoutMs: config.tokenExchangeTimeoutMs,
     cacheMaxEntries: config.tokenExchangeCacheMaxEntries,
   });
