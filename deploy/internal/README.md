@@ -74,6 +74,16 @@ validation. Access logging is disabled so request URLs/tokens are not logged.
 install a published upstream MCP package. Builder and runtime use the same
 digest-pinned Node 22 base. Runtime UID/GID is 10001.
 
+Published AMD64 image (ACR build `cu26`):
+
+```text
+taaracr0.azurecr.io/taar-affine-mcp@sha256:305093cff9d5df9478b05931b506623215c534ede5850ad29d71442d96a77fb8
+```
+
+Source revision: `7954e24ab34744150192846e9a5acff8ab47ce59`.
+Built using the existing Azure identity; no registry token or GitHub secret was
+created. The existing `taaracr0-secret` grants pull access to this repository.
+
 ```sh
 export PATH=/Users/devanshjain/.nvm/versions/node/v22.19.0/bin:$PATH
 npm ci
@@ -98,18 +108,11 @@ in GitHub secrets `TAAR_AFFINE_MCP_ACR_USERNAME` and
 `TAAR_AFFINE_MCP_ACR_PASSWORD` without printing values. Do not enable ACR admin
 credentials. Preparing this workflow creates no registry credentials.
 
-## Render and review
+## Review and deploy
 
-Set `MCP_IMAGE_DIGEST` (including `sha256:`) to the published image digest.
-All hostname and label values are fixed in the template for parent review.
-
-```sh
-envsubst '${MCP_IMAGE_DIGEST}' \
-  < deploy/internal/deployment.yaml.template > /tmp/affine-mcp-reviewed.yaml
-```
-
-Review the rendered manifest and confirm all variables resolved before the
-parent authorizes applying it. Keep replicas at one with Recreate updates:
+`deploy/internal/deployment.yaml` contains the immutable published image and
+concrete hostnames/selectors. It has no rendering variables. Review the manifest
+before the parent authorizes applying it. Keep replicas at one with Recreate updates:
 document write coordination and MCP sessions are process-local. Expect session
 reinitialization during updates. The runtime has a read-only root filesystem
 with a bounded ephemeral `/tmp`; no saved user credentials are provided.

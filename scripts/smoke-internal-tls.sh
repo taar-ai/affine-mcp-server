@@ -23,7 +23,7 @@ openssl x509 -req -days 1 -in "$FIXTURE_DIR/tls.csr" \
   -extfile <(echo 'subjectAltName=DNS:affine-mcp.internal.taar.ltd') \
   -out "$FIXTURE_DIR/tls.crt" >/dev/null 2>&1
 ruby -ryaml -e 'd = YAML.load_stream(File.read(ARGV[0])).find { |x| x.dig("metadata", "name") == "affine-mcp-tls" }; File.write(ARGV[1], d.fetch("data").fetch("nginx.conf"))' \
-  deploy/internal/deployment.yaml.template "$FIXTURE_DIR/nginx.conf"
+  deploy/internal/deployment.yaml "$FIXTURE_DIR/nginx.conf"
 # Match the cert-manager Secret permission model for the non-root TLS process.
 docker run --rm --user 0 --entrypoint /bin/sh -v "$FIXTURE_DIR:/fixture" "$NGINX_IMAGE" \
   -ec 'chown 0:10001 /fixture/tls.key /fixture/tls.crt; chmod 0440 /fixture/tls.key /fixture/tls.crt; chmod 0755 /fixture'
