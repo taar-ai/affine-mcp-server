@@ -117,13 +117,13 @@ validation. Access logging is disabled so request URLs/tokens are not logged.
 install a published upstream MCP package. Builder and runtime use the same
 digest-pinned Node 22 base. Runtime UID/GID is 10001.
 
-Published AMD64 image with exact tunnel resource support (ACR build `cu27`):
+Published AMD64 gateway adapter with absolute exchange URL and verified-principal enforcement (ACR build `cu28`):
 
 ```text
-taaracr0.azurecr.io/taar-affine-mcp@sha256:f1bf6918ecb1f01e65911dfcc518cf0a6dd1d90df761fd8a0ddc7292587a97f6
+taaracr0.azurecr.io/taar-affine-mcp@sha256:f68eb489c055182fbab99b6de915b298cda34295e0f1b41217dae095c292bd58
 ```
 
-Source revision: `d17632c263eca55cf56a2dc4dc12a46abc1b1b37`.
+Source revision: `bc02d8c873208a5b84355a59233f1e8c7cdb8839`.
 Built using the existing Azure identity; no registry token or GitHub secret was
 created. The existing `taaracr0-secret` grants pull access to this repository.
 
@@ -160,6 +160,27 @@ before the parent authorizes applying it. Keep replicas at one with Recreate upd
 document write coordination and MCP sessions are process-local. Expect session
 reinitialization during updates. The runtime has a read-only root filesystem
 with a bounded ephemeral `/tmp`; no saved user credentials are provided.
+
+Parent prerequisites: confirm the shared resource equals the verified existing
+TaarInternal resource above, the private `affine-api:3010` Service reaches the
+fixed exchange-capable application, and the public nginx path deny is active.
+Review all additive NetworkPolicies selecting the adapter: any old
+`affine-mcp-openai-tunnel` rule must be removed by the parent so only the gateway
+workload can connect. Applying this manifest does not delete other policies.
+
+After review and authorization, from this source checkout the parent can run:
+
+```sh
+kubectl --context k3 -n taar-int-affine apply --dry-run=server -f deploy/internal/deployment.yaml
+kubectl --context k3 -n taar-int-affine diff -f deploy/internal/deployment.yaml
+kubectl --context k3 -n taar-int-affine apply -f deploy/internal/deployment.yaml
+kubectl --context k3 -n taar-int-affine rollout status deployment/affine-mcp --timeout=120s
+```
+
+`kubectl diff` exit code 1 means reviewed differences exist. These commands have
+not been run as part of preparing this revision. The safe authenticated probe is
+upstream tool `current_user` with arguments `{}`, invoked only through the
+existing authenticated gateway path; do not capture, log or fabricate a bearer.
 
 After authorization, the parent can perform a server dry run, diff, apply and
 rollout check against the explicitly selected internal cluster. Verify image
