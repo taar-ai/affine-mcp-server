@@ -32,6 +32,7 @@ MCP_ID="$(docker run -d --read-only --cap-drop ALL --security-opt no-new-privile
   -e XDG_CONFIG_HOME=/tmp/affine-mcp -e AFFINE_MCP_HTTP_HOST=127.0.0.1 \
   -e AFFINE_MCP_AUTH_MODE=oauth -e AFFINE_BACKEND_AUTH_MODE=oauth_token_exchange \
   -e AFFINE_MCP_PUBLIC_BASE_URL=https://affine-mcp.internal.taar.ltd \
+  -e AFFINE_OAUTH_RESOURCE_URL=https://tunnel.example.test/v1/mcp/tunnel_fixture \
   -e AFFINE_OAUTH_ISSUER_URL=https://issuer.example.test \
   -e AFFINE_TOOL_PROFILE=authoring "$IMAGE_REF")"
 TLS_ID="$(docker run -d --network "container:$MCP_ID" --user 101:101 --group-add 10001 \
@@ -58,6 +59,15 @@ for attempt in {1..30}; do
       --resolve "affine-mcp.internal.taar.ltd:$HOST_PORT:127.0.0.1" \
       -X POST -o /dev/null -w '%{http_code}' "https://affine-mcp.internal.taar.ltd:$HOST_PORT/mcp")"
     test "$STATUS" = 401
+    curl --silent --fail --noproxy '*' --cacert "$FIXTURE_DIR/ca.crt" \
+      --resolve "affine-mcp.internal.taar.ltd:$HOST_PORT:127.0.0.1" \
+      "https://affine-mcp.internal.taar.ltd:$HOST_PORT/.well-known/oauth-protected-resource/mcp" > "$FIXTURE_DIR/metadata.json"
+    node --input-type=module -e '
+      import assert from "node:assert/strict";
+      import fs from "node:fs";
+      const metadata = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+      assert.equal(metadata.resource, "https://tunnel.example.test/v1/mcp/tunnel_fixture");
+    ' "$FIXTURE_DIR/metadata.json"
     docker exec "$TLS_ID" nginx -t -q
     echo 'TLS frontend smoke passed: pinned nginx, non-root/read-only, group-readable key, verified TLS, protected MCP.'
     exit 0

@@ -1,7 +1,9 @@
 # Internal Taar deployment (pending manifest review)
 
 This directory stages the delegated deployment in namespace `taar-int-affine`.
-The canonical resource is `https://affine-mcp.internal.taar.ltd/mcp`.
+The internal target is `https://affine-mcp.internal.taar.ltd/mcp`; it is not the
+OAuth audience for ChatGPT. The consuming client is ChatGPT through a dedicated
+OpenAI tunnel. Its exact public MCP URL is not yet known and must not be invented.
 It creates a ClusterIP service on 443 with a non-root nginx TLS sidecar on 8443,
 and a DNS01 Certificate using the existing `letsencrypt-cloudflare` ClusterIssuer.
 It has no Ingress, NodePort, LoadBalancer, persistent volume, shared AFFiNE
@@ -12,10 +14,27 @@ not deploy any cluster resources.
 
 ## Required parent contracts
 
+- After creating the dedicated tunnel, supply its exact public MCP URL as
+  ConfigMap `affine-mcp-resource`, key `OAUTH_RESOURCE`, in `taar-int-affine`.
+  The manifest requires this key for `AFFINE_OAUTH_RESOURCE_URL`; a missing map
+  or key prevents the pod starting, and an empty/invalid value fails config
+  validation. This repository does not create or populate that ConfigMap.
+  AFFiNE's `TAAR_MCP_OAUTH_RESOURCE` references the same shared key. Use the
+  identical URL in the issuer/tunnel callback and AFFiNE audience policy.
+  Do not append `/mcp` to a tunnel path such as `/v1/mcp/tunnel_ID`.
+  Explicit resources require canonical HTTPS with no userinfo, query, fragment
+  or wildcard. JWT `aud` must be exactly that single string: arrays, different
+  tunnels, trailing-slash variants and internal/base audiences are rejected.
+  The internal `AFFINE_MCP_PUBLIC_BASE_URL` still determines local routes and
+  challenges. Both local `/.well-known/oauth-protected-resource` and
+  `/.well-known/oauth-protected-resource/mcp` advertise the external resource.
+  The parent owns how the dedicated tunnel serves these discovery routes and
+  any external challenge URL rewriting. No public URL is enabled by this change.
 - MCP pod label is `app.kubernetes.io/name=affine-mcp` in `taar-int-affine`.
   Only `taar-internal` pods labeled
-  `app.kubernetes.io/name=openai-mcp-gateway` may reach TCP 8443. These gateway
-  labels were verified live. Any additional test client requires separate review.
+  `app.kubernetes.io/name=openai-affine-mcp-tunnel` may reach TCP 8443. This is
+  the parent-designated dedicated tunnel client. Any additional test client
+  requires separate review; the old shared gateway selector is not retained.
 - AFFiNE is Service `affine:3010`, with pod label
   `app.kubernetes.io/name=affine`. Relay is Service `affine-taar-jwks:8080`, with
   pod label `app.kubernetes.io/name=affine-taar-jwks`, in the same namespace.
@@ -111,7 +130,8 @@ credentials. Preparing this workflow creates no registry credentials.
 ## Review and deploy
 
 `deploy/internal/deployment.yaml` contains the immutable published image and
-concrete hostnames/selectors. It has no rendering variables. Review the manifest
+concrete internal hostnames/selectors, with a required parent-owned external
+resource ConfigMap reference. It has no rendering variables. Review the manifest
 before the parent authorizes applying it. Keep replicas at one with Recreate updates:
 document write coordination and MCP sessions are process-local. Expect session
 reinitialization during updates. The runtime has a read-only root filesystem

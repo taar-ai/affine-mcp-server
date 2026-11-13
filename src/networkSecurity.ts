@@ -28,6 +28,22 @@ export function isRemotePlainHttpUrl(url: URL): boolean {
   return url.protocol === "http:" && !isLoopbackHostname(url.hostname);
 }
 
+/** Preserve the exact OAuth audience, including its path and trailing slash. */
+export function validateOAuthResourceUrl(value: string): string {
+  const message = "AFFINE_OAUTH_RESOURCE_URL must be a canonical HTTPS URL without userinfo, query, fragment, or wildcards.";
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error(message);
+  }
+  if (url.protocol !== "https:" || url.username || url.password
+    || /[?#*\\\s]/.test(value) || /%2a/i.test(value) || url.href !== value) {
+    throw new Error(message);
+  }
+  return value;
+}
+
 /** AFFiNE Cloud is served from the `affine.pro` registrable domain. */
 const AFFINE_CLOUD_DOMAIN = "affine.pro";
 

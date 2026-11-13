@@ -127,6 +127,15 @@ spec:
           envFrom:
             - configMapRef:
                 name: affine-mcp
+          # Parent supplies the exact dedicated public tunnel URL after creation.
+          # A missing ConfigMap/key prevents startup; no internal-audience fallback.
+          env:
+            - name: AFFINE_OAUTH_RESOURCE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: affine-mcp-resource
+                  key: OAUTH_RESOURCE
+                  optional: false
           ports:
             - name: http
               containerPort: 3000
@@ -248,7 +257,7 @@ spec:
               kubernetes.io/metadata.name: taar-internal
           podSelector:
             matchLabels:
-              app.kubernetes.io/name: openai-mcp-gateway
+              app.kubernetes.io/name: openai-affine-mcp-tunnel
       ports:
         - protocol: TCP
           port: 8443

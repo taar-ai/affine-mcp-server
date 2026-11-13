@@ -2,9 +2,11 @@ import { createRemoteJWKSet, customFetch, jwtVerify, type JWTPayload } from "jos
 
 import { discoverAuthorizationServerMetadata } from "@modelcontextprotocol/sdk/client/auth.js";
 import { fetchResponseBody } from "./util/httpResponse.js";
+import { validateOAuthResourceUrl } from "./networkSecurity.js";
 
 export type OAuthConfig = {
   publicBaseUrl: string;
+  resourceUrl?: string;
   issuerUrl: string;
   scopes: string[];
   clockSkewSeconds: number;
@@ -72,7 +74,8 @@ export function isLoopbackUrl(url: string): boolean {
   }
 }
 
-export function getOAuthResourceUrl(publicBaseUrl: string): string {
+export function getOAuthResourceUrl(publicBaseUrl: string, resourceUrl?: string): string {
+  if (resourceUrl !== undefined) return validateOAuthResourceUrl(resourceUrl);
   const normalized = publicBaseUrl.replace(/\/$/, "");
   return normalized.endsWith("/mcp") ? normalized : `${normalized}/mcp`;
 }
@@ -90,7 +93,7 @@ export function getOAuthProtectedResourceMetadataPaths(publicBaseUrl: string): s
 
 export function buildOAuthProtectedResourceMetadata(config: OAuthConfig) {
   return {
-    resource: getOAuthResourceUrl(config.publicBaseUrl),
+    resource: getOAuthResourceUrl(config.publicBaseUrl, config.resourceUrl),
     authorization_servers: [config.issuerUrl],
     scopes_supported: config.scopes,
   };
@@ -106,6 +109,7 @@ export function validateOAuthConfig(config: OAuthConfig, opts: { allowAnyOrigin:
 
   const publicUrl = new URL(config.publicBaseUrl);
   const issuerUrl = new URL(config.issuerUrl);
+  if (config.resourceUrl !== undefined) validateOAuthResourceUrl(config.resourceUrl);
 
   if (publicUrl.protocol !== "https:" && !isLoopbackHostname(publicUrl.hostname)) {
     throw new Error("AFFINE_MCP_PUBLIC_BASE_URL must use HTTPS for non-local OAuth deployments.");
@@ -129,6 +133,7 @@ function validateMetadataRelayUrl(value: string): URL {
 }
 
 function buildAudienceList(config: OAuthConfig): string[] {
+  if (config.resourceUrl !== undefined) return [getOAuthResourceUrl(config.publicBaseUrl, config.resourceUrl)];
   const publicBaseUrl = config.publicBaseUrl.replace(/\/$/, "");
   const resourceUrl = getOAuthResourceUrl(config.publicBaseUrl);
   return [...new Set([publicBaseUrl, resourceUrl])];
@@ -234,6 +239,11 @@ export async function verifyOAuthAccessToken(token: string, config: OAuthConfig)
     algorithms: [...ALLOWED_JWT_ALGORITHMS],
     clockTolerance: config.clockSkewSeconds,
   });
+
+  // jose accepts audience arrays containing a match; explicit resources require a single exact string.
+  if (config.resourceUrl !== undefined && payload.aud !== config.resourceUrl) {
+    throw new Error("JWT audience must be the exact configured resource string");
+  }
 
   if (typeof payload.exp !== "number" || !Number.isFinite(payload.exp)) {
     throw new Error("Token does not include a valid exp claim");

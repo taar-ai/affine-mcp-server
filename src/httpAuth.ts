@@ -81,6 +81,7 @@ export function createHttpAuthState(
     }
     oauthConfig = {
       publicBaseUrl: config.publicBaseUrl,
+      resourceUrl: config.oauthResourceUrl,
       issuerUrl: config.oauthIssuerUrl,
       metadataRelayBaseUrl: config.oauthMetadataRelayBaseUrl,
       scopes: config.oauthScopes,
@@ -148,7 +149,7 @@ export function createHttpAuthState(
             clientId: authInfo.clientId ?? "",
             scopes: authInfo.scopes,
             expiresAt: authInfo.expiresAt,
-            resource: new URL(getOAuthResourceUrl(oauthConfig!.publicBaseUrl)),
+            resource: new URL(getOAuthResourceUrl(oauthConfig!.publicBaseUrl, oauthConfig!.resourceUrl)),
             extra: { subject: authInfo.subject },
           };
           next();

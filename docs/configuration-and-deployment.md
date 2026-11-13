@@ -161,6 +161,7 @@ the transport, HTTP bind/auth/origin values, and all OAuth settings shown here.
 | `AFFINE_MCP_HTTP_TOKEN` | Required for non-loopback bearer mode | none | Shared bearer token for `/mcp`, `/sse`, and `/messages` |
 | `AFFINE_MCP_PUBLIC_BASE_URL` | Required in OAuth mode | none | Public base URL for this MCP server |
 | `AFFINE_OAUTH_ISSUER_URL` | Required in OAuth mode | none | OAuth issuer discovery URL |
+| `AFFINE_OAUTH_RESOURCE_URL` | No; required for a dedicated public tunnel | derived from base URL | Exact canonical HTTPS resource URL; no userinfo, query, fragment or wildcards. Preserved without appending `/mcp`. When set, only an identical single-string JWT audience is accepted; arrays and base/internal alternatives are rejected. Metadata and request `AuthInfo.resource` use this URL; local discovery routes still use the base URL. |
 | `AFFINE_OAUTH_METADATA_RELAY_BASE_URL` | No | none | Environment-only origin for a trusted public-metadata relay; GET `/metadata` and `/jwks`, no redirects or caller credentials; HTTP requires cluster DNS, loopback, or exact `http://affine-taar-jwks:8080`. See `deploy/internal/README.md` in the source checkout. |
 | `AFFINE_OAUTH_SCOPES` | No | `mcp` | Scopes advertised for OAuth-protected access |
 | `AFFINE_OAUTH_CLOCK_SKEW_SECONDS` | No | `60` | Positive integer tolerance for OAuth token timestamps |

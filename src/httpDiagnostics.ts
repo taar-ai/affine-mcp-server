@@ -92,7 +92,7 @@ export function registerHttpDiagnosticsRoutes(
           ? {
               issuer: oauthReadiness.issuer,
               jwksUri: oauthReadiness.jwksUri,
-              resource: getOAuthResourceUrl(authState.oauthConfig.publicBaseUrl),
+              resource: getOAuthResourceUrl(authState.oauthConfig.publicBaseUrl, authState.oauthConfig.resourceUrl),
             }
           : {}),
       });

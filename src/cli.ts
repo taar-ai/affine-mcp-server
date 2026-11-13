@@ -373,6 +373,7 @@ function buildEffectiveConfigSummary(effective: ServerConfig = loadConfig()) {
     email: auth.email || null,
     publicBaseUrl: effective.publicBaseUrl || null,
     oauthIssuerUrl: effective.oauthIssuerUrl || null,
+    oauthResourceUrl: effective.oauthResourceUrl || null,
     oauthScopes: effective.oauthScopes,
     oauthClockSkewSeconds: effective.oauthClockSkewSeconds,
     tokenExchangePath: effective.tokenExchangePath,
@@ -400,6 +401,7 @@ function buildEffectiveConfigSummary(effective: ServerConfig = loadConfig()) {
       backendAuthMode: getConfigValueSource("AFFINE_BACKEND_AUTH_MODE", stored, "configured"),
       publicBaseUrl: getConfigValueSource("AFFINE_MCP_PUBLIC_BASE_URL", stored),
       oauthIssuerUrl: getConfigValueSource("AFFINE_OAUTH_ISSUER_URL", stored),
+      oauthResourceUrl: getConfigValueSource("AFFINE_OAUTH_RESOURCE_URL", stored),
       oauthScopes: getConfigValueSource("AFFINE_OAUTH_SCOPES", stored, "mcp"),
       oauthClockSkewSeconds: getConfigValueSource("AFFINE_OAUTH_CLOCK_SKEW_SECONDS", stored, "60"),
       tokenExchangePath: getConfigValueSource("AFFINE_TOKEN_EXCHANGE_PATH", stored, "/api/auth/taar/mcp/token"),
@@ -1379,6 +1381,7 @@ function showConfig(args: string[]) {
   if (summary.email) console.log(`Email: ${summary.email} (${summary.sources.email})`);
   if (summary.publicBaseUrl) console.log(`Public base URL: ${summary.publicBaseUrl} (${summary.sources.publicBaseUrl})`);
   if (summary.oauthIssuerUrl) console.log(`OAuth issuer URL: ${summary.oauthIssuerUrl} (${summary.sources.oauthIssuerUrl})`);
+  if (summary.oauthResourceUrl) console.log(`OAuth resource URL: ${summary.oauthResourceUrl} (${summary.sources.oauthResourceUrl})`);
   if (summary.authMode === "oauth") {
     console.log(`OAuth scopes: ${summary.oauthScopes.join(", ")} (${summary.sources.oauthScopes})`);
     console.log(
@@ -1600,6 +1603,7 @@ async function doctor(args: string[]) {
     } else {
       const oauthConfig = {
         publicBaseUrl: effective.publicBaseUrl,
+        resourceUrl: effective.oauthResourceUrl,
         issuerUrl: effective.oauthIssuerUrl,
         metadataRelayBaseUrl: effective.oauthMetadataRelayBaseUrl,
         scopes: effective.oauthScopes,
@@ -1698,6 +1702,7 @@ function getSnippetEnv(): Record<string, string> {
     }
     if (effective.publicBaseUrl) env.AFFINE_MCP_PUBLIC_BASE_URL = effective.publicBaseUrl;
     if (effective.oauthIssuerUrl) env.AFFINE_OAUTH_ISSUER_URL = effective.oauthIssuerUrl;
+    if (effective.oauthResourceUrl) env.AFFINE_OAUTH_RESOURCE_URL = effective.oauthResourceUrl;
     if (effective.oauthScopes.length > 0) env.AFFINE_OAUTH_SCOPES = effective.oauthScopes.join(" ");
   }
   return env;

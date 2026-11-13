@@ -6,6 +6,7 @@ import { createRequire } from "module";
 import {
   isRemotePlainHttpUrl,
   parseBooleanFlag,
+  validateOAuthResourceUrl,
 } from "./networkSecurity.js";
 import {
   hasAuthenticationHeader,
@@ -61,6 +62,7 @@ export type ServerConfig = {
   tokenExchangeCacheMaxEntries: number;
   publicBaseUrl?: string;
   oauthIssuerUrl?: string;
+  oauthResourceUrl?: string;
   oauthMetadataRelayBaseUrl?: string;
   oauthScopes: string[];
   oauthClockSkewSeconds: number;
@@ -422,6 +424,9 @@ export function loadConfig(): ServerConfig {
   const defaultWorkspaceId = env("AFFINE_WORKSPACE_ID", file);
   const publicBaseUrlRaw = env("AFFINE_MCP_PUBLIC_BASE_URL", file);
   const oauthIssuerUrlRaw = env("AFFINE_OAUTH_ISSUER_URL", file);
+  const oauthResourceUrlRaw = process.env.AFFINE_OAUTH_RESOURCE_URL ?? file.AFFINE_OAUTH_RESOURCE_URL;
+  const oauthResourceUrl = oauthResourceUrlRaw === undefined
+    ? undefined : validateOAuthResourceUrl(oauthResourceUrlRaw);
   const publicBaseUrl = publicBaseUrlRaw
     ? validateBaseUrl(publicBaseUrlRaw, { label: "AFFINE_MCP_PUBLIC_BASE_URL" })
     : undefined;
@@ -485,6 +490,7 @@ export function loadConfig(): ServerConfig {
     tokenExchangeCacheMaxEntries,
     publicBaseUrl,
     oauthIssuerUrl,
+    oauthResourceUrl,
     oauthMetadataRelayBaseUrl: process.env.AFFINE_OAUTH_METADATA_RELAY_BASE_URL?.trim() || undefined,
     oauthScopes,
     oauthClockSkewSeconds,
