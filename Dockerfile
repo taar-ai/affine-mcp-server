@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # ─── Stage 1: build ──────────────────────────────────────────────────────────
-FROM node:20-alpine AS builder
+FROM node:22-alpine@sha256:1314fb30ec37592d5845e5a160d522c0e680972aa534549940b8d73bde88481a AS builder
 
 WORKDIR /app
 
@@ -18,10 +18,10 @@ RUN npm run build
 RUN npm prune --omit=dev
 
 # ─── Stage 2: runtime ────────────────────────────────────────────────────────
-FROM node:20-alpine AS runtime
+FROM node:22-alpine@sha256:1314fb30ec37592d5845e5a160d522c0e680972aa534549940b8d73bde88481a AS runtime
 
 # Non-root user for security
-RUN addgroup -S affine && adduser -S affine -G affine
+RUN addgroup -S -g 10001 affine && adduser -S -u 10001 affine -G affine
 
 WORKDIR /app
 
@@ -32,7 +32,7 @@ COPY --chown=affine:affine bin/ ./bin/
 COPY --chown=affine:affine package.json ./
 COPY --chown=affine:affine tool-manifest.json ./
 
-USER affine
+USER 10001:10001
 
 EXPOSE 3000
 

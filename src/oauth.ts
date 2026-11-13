@@ -1,4 +1,4 @@
-import { createRemoteJWKSet, jwtVerify, type JWTPayload } from "jose";
+import { createRemoteJWKSet, customFetch, jwtVerify, type JWTPayload } from "jose";
 
 import { discoverAuthorizationServerMetadata } from "@modelcontextprotocol/sdk/client/auth.js";
 import { fetchResponseBody } from "./util/httpResponse.js";
@@ -8,6 +8,7 @@ export type OAuthConfig = {
   issuerUrl: string;
   scopes: string[];
   clockSkewSeconds: number;
+  metadataRelayBaseUrl?: string;
 };
 
 export type OAuthAccessTokenInfo = {
@@ -47,6 +48,7 @@ async function fetchOAuthMetadata(input: string | URL, init?: RequestInit): Prom
   const { response, body } = await fetchResponseBody(
     signal => fetch(input, {
       ...init,
+      redirect: "error",
       signal: init?.signal ? AbortSignal.any([init.signal, signal]) : signal,
     }),
     { label: "OAuth metadata discovery", timeoutMs: OAUTH_DISCOVERY_TIMEOUT_MS },
@@ -111,6 +113,18 @@ export function validateOAuthConfig(config: OAuthConfig, opts: { allowAnyOrigin:
   if (issuerUrl.protocol !== "https:" && !isLoopbackHostname(issuerUrl.hostname)) {
     throw new Error("AFFINE_OAUTH_ISSUER_URL must use HTTPS for non-local OAuth deployments.");
   }
+  if (config.metadataRelayBaseUrl) validateMetadataRelayUrl(config.metadataRelayBaseUrl);
+}
+
+function validateMetadataRelayUrl(value: string): URL {
+  const url = new URL(value);
+  const privateHttp = url.protocol === "http:"
+    && (url.hostname.endsWith(".svc.cluster.local") || isLoopbackHostname(url.hostname));
+  if ((url.protocol !== "https:" && !privateHttp)
+    || url.username || url.password || url.search || url.hash || url.pathname !== "/") {
+    throw new Error("AFFINE_OAUTH_METADATA_RELAY_BASE_URL requires an HTTPS origin or an explicit cluster-DNS HTTP origin.");
+  }
+  return url;
 }
 
 function buildAudienceList(config: OAuthConfig): string[] {
@@ -141,18 +155,32 @@ function getScopesFromPayload(payload: JWTPayload): string[] {
   return [...scopes];
 }
 
-async function loadAuthorizationServerMetadata(issuerUrl: string): Promise<AuthorizationServerMetadata> {
-  let pending = metadataCache.get(issuerUrl);
+async function loadAuthorizationServerMetadata(config: OAuthConfig): Promise<AuthorizationServerMetadata> {
+  const { issuerUrl, metadataRelayBaseUrl } = config;
+  const cacheKey = JSON.stringify([issuerUrl, metadataRelayBaseUrl]);
+  let pending = metadataCache.get(cacheKey);
   if (!pending) {
     pending = (async () => {
-      const discovered = await discoverAuthorizationServerMetadata(new URL(issuerUrl), {
-        fetchFn: fetchOAuthMetadata,
-      });
+      let discovered;
+      if (metadataRelayBaseUrl) {
+        const relay = validateMetadataRelayUrl(metadataRelayBaseUrl);
+        const response = await fetchOAuthMetadata(new URL("/metadata", relay));
+        if (!response.ok) throw new Error(`OAuth metadata relay returned HTTP ${response.status}`);
+        discovered = await response.json();
+      } else {
+        discovered = await discoverAuthorizationServerMetadata(new URL(issuerUrl), {
+          fetchFn: fetchOAuthMetadata,
+        });
+      }
       if (!discovered?.issuer || typeof discovered.issuer !== "string") {
         throw new Error(`Could not discover authorization server metadata from ${issuerUrl}`);
       }
       if (!("jwks_uri" in discovered) || typeof discovered.jwks_uri !== "string" || !discovered.jwks_uri) {
         throw new Error(`Authorization server metadata from ${issuerUrl} did not provide jwks_uri`);
+      }
+      if (discovered.issuer !== issuerUrl) throw new Error("OAuth metadata issuer does not match configured issuer");
+      if (metadataRelayBaseUrl && discovered.jwks_uri !== `${issuerUrl.replace(/\/$/, "")}/.well-known/jwks.json`) {
+        throw new Error("OAuth metadata relay jwks_uri does not match the pinned issuer JWKS route");
       }
       return {
         issuer: discovered.issuer,
@@ -161,16 +189,16 @@ async function loadAuthorizationServerMetadata(issuerUrl: string): Promise<Autho
     })().catch((error) => {
       // Only evict this generation. A future retry must not remove a newer
       // in-flight entry if cache ownership changes between attempts.
-      if (metadataCache.get(issuerUrl) === pending) metadataCache.delete(issuerUrl);
+      if (metadataCache.get(cacheKey) === pending) metadataCache.delete(cacheKey);
       throw error;
     });
-    metadataCache.set(issuerUrl, pending);
+    metadataCache.set(cacheKey, pending);
   }
   return pending;
 }
 
 export async function probeOAuthReadiness(config: OAuthConfig): Promise<{ issuer: string; jwksUri: string }> {
-  const metadata = await loadAuthorizationServerMetadata(config.issuerUrl);
+  const metadata = await loadAuthorizationServerMetadata(config);
   if (!metadata.jwks_uri) {
     throw new Error("Authorization server metadata is missing jwks_uri");
   }
@@ -180,21 +208,26 @@ export async function probeOAuthReadiness(config: OAuthConfig): Promise<{ issuer
   };
 }
 
-function getJwks(metadata: AuthorizationServerMetadata) {
+function getJwks(metadata: AuthorizationServerMetadata, config: OAuthConfig) {
   if (!metadata.jwks_uri) {
     throw new Error("Authorization server metadata is missing jwks_uri");
   }
-  let jwks = jwksCache.get(metadata.jwks_uri);
+  const cacheKey = JSON.stringify([metadata.jwks_uri, config.metadataRelayBaseUrl]);
+  let jwks = jwksCache.get(cacheKey);
   if (!jwks) {
-    jwks = createRemoteJWKSet(new URL(metadata.jwks_uri));
-    jwksCache.set(metadata.jwks_uri, jwks);
+    const relay = config.metadataRelayBaseUrl ? validateMetadataRelayUrl(config.metadataRelayBaseUrl) : undefined;
+    jwks = createRemoteJWKSet(new URL(metadata.jwks_uri), relay ? {
+      // Only public verification material crosses the relay; never forward caller headers.
+      [customFetch]: (_url, init) => fetchOAuthMetadata(new URL("/jwks", relay), { signal: init?.signal }),
+    } : undefined);
+    jwksCache.set(cacheKey, jwks);
   }
   return jwks;
 }
 
 export async function verifyOAuthAccessToken(token: string, config: OAuthConfig): Promise<OAuthAccessTokenInfo> {
-  const metadata = await loadAuthorizationServerMetadata(config.issuerUrl);
-  const { payload } = await jwtVerify(token, getJwks(metadata), {
+  const metadata = await loadAuthorizationServerMetadata(config);
+  const { payload } = await jwtVerify(token, getJwks(metadata, config), {
     issuer: metadata.issuer,
     audience: buildAudienceList(config),
     algorithms: [...ALLOWED_JWT_ALGORITHMS],

@@ -61,6 +61,7 @@ export type ServerConfig = {
   tokenExchangeCacheMaxEntries: number;
   publicBaseUrl?: string;
   oauthIssuerUrl?: string;
+  oauthMetadataRelayBaseUrl?: string;
   oauthScopes: string[];
   oauthClockSkewSeconds: number;
   transportMode: TransportMode;
@@ -484,6 +485,7 @@ export function loadConfig(): ServerConfig {
     tokenExchangeCacheMaxEntries,
     publicBaseUrl,
     oauthIssuerUrl,
+    oauthMetadataRelayBaseUrl: process.env.AFFINE_OAUTH_METADATA_RELAY_BASE_URL?.trim() || undefined,
     oauthScopes,
     oauthClockSkewSeconds,
     transportMode,

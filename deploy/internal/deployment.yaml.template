@@ -1,0 +1,166 @@
+# Render only after parent review of resource URL, image digest and pod selectors.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: affine-mcp
+  namespace: taar-int-affine
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: affine-mcp
+  namespace: taar-int-affine
+data:
+  MCP_TRANSPORT: http
+  AFFINE_MCP_HTTP_HOST: 0.0.0.0
+  PORT: "3000"
+  AFFINE_MCP_AUTH_MODE: oauth
+  AFFINE_BACKEND_AUTH_MODE: oauth_token_exchange
+  AFFINE_BASE_URL: "http://${AFFINE_SERVICE_NAME}.taar-int-affine.svc.cluster.local:3010"
+  AFFINE_ALLOW_INSECURE_HTTP: "true"
+  AFFINE_TOKEN_EXCHANGE_PATH: /api/auth/taar/mcp/token
+  AFFINE_MCP_PUBLIC_BASE_URL: "${MCP_PUBLIC_BASE_URL}"
+  AFFINE_OAUTH_ISSUER_URL: https://int30.taar.ltd
+  AFFINE_OAUTH_SCOPES: openid email profile
+  AFFINE_OAUTH_METADATA_RELAY_BASE_URL: http://affine-taar-jwks.taar-int-affine.svc.cluster.local:8080
+  AFFINE_TOOL_PROFILE: authoring
+  XDG_CONFIG_HOME: /tmp/affine-mcp
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: affine-mcp
+  namespace: taar-int-affine
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: affine-mcp
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: affine-mcp
+    spec:
+      serviceAccountName: affine-mcp
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 20
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: mcp
+          image: "taaracr0.azurecr.io/taar-affine-mcp@${MCP_IMAGE_DIGEST}"
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: affine-mcp
+          ports:
+            - name: http
+              containerPort: 3000
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 2
+            failureThreshold: 30
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            timeoutSeconds: 12
+            periodSeconds: 20
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            medium: Memory
+            sizeLimit: 32Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: affine-mcp
+  namespace: taar-int-affine
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: affine-mcp
+  ports:
+    - name: http
+      port: 3000
+      targetPort: http
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: affine-mcp
+  namespace: taar-int-affine
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: affine-mcp
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: "${MCP_CLIENT_NAMESPACE}"
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: "${MCP_CLIENT_POD_LABEL}"
+      ports:
+        - protocol: TCP
+          port: 3000
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: "${AFFINE_POD_LABEL}"
+      ports:
+        - protocol: TCP
+          port: 3010
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: "${ISSUER_RELAY_POD_LABEL}"
+      ports:
+        - protocol: TCP
+          port: 8080

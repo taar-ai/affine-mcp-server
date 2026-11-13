@@ -1601,6 +1601,7 @@ async function doctor(args: string[]) {
       const oauthConfig = {
         publicBaseUrl: effective.publicBaseUrl,
         issuerUrl: effective.oauthIssuerUrl,
+        metadataRelayBaseUrl: effective.oauthMetadataRelayBaseUrl,
         scopes: effective.oauthScopes,
         clockSkewSeconds: effective.oauthClockSkewSeconds,
       };
