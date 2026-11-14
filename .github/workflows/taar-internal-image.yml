@@ -67,3 +67,37 @@ jobs:
           IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
         run: |
           echo "taaracr0.azurecr.io/taar-affine-mcp@$IMAGE_DIGEST" >> "$GITHUB_STEP_SUMMARY"
+      - name: Build renderer smoke image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
+        with:
+          context: .
+          file: deploy/Dockerfile.canvas-renderer
+          platforms: linux/amd64
+          load: true
+          push: false
+          tags: taar-affine-mcp:renderer-smoke
+          cache-from: type=gha,scope=wiki-renderer
+      - name: Verify renderer image boundary without credentials
+        run: bash scripts/smoke-canvas-renderer-image.sh taar-affine-mcp:renderer-smoke
+      - name: Build and publish renderer
+        id: renderer
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
+        with:
+          context: .
+          file: deploy/Dockerfile.canvas-renderer
+          platforms: linux/amd64
+          push: true
+          tags: taaracr0.azurecr.io/taar-affine-mcp:renderer-sha-${{ github.sha }}
+          build-args: SOURCE_REVISION=${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/taar-ai/affine-mcp-server
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.vendor=Taar
+          cache-from: type=gha,scope=wiki-renderer
+          cache-to: type=gha,scope=wiki-renderer,mode=max
+          provenance: mode=max
+          sbom: true
+      - name: Record immutable renderer reference
+        env:
+          RENDERER_DIGEST: ${{ steps.renderer.outputs.digest }}
+        run: echo "Renderer - taaracr0.azurecr.io/taar-affine-mcp@$RENDERER_DIGEST" >> "$GITHUB_STEP_SUMMARY"

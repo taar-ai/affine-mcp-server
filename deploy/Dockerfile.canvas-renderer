@@ -1,0 +1,21 @@
+# syntax=docker/dockerfile:1
+FROM node:22-alpine@sha256:1314fb30ec37592d5845e5a160d522c0e680972aa534549940b8d73bde88481a AS builder
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci
+COPY tsconfig.json ./
+COPY src/ ./src/
+RUN npm run build && npm prune --omit=dev
+
+# Browser and protocol library versions must match. No browser download at runtime.
+FROM mcr.microsoft.com/playwright:v1.64.1-noble@sha256:2f05f8a734509a7b3f26a912639488ee08f58a7b292d14d62271bcff9038768f
+ARG SOURCE_REVISION=unknown
+LABEL org.opencontainers.image.source="https://github.com/taar-ai/affine-mcp-server" \
+      org.opencontainers.image.revision=$SOURCE_REVISION
+WORKDIR /app
+COPY --from=builder --chown=pwuser:pwuser /app/node_modules ./node_modules
+COPY --from=builder --chown=pwuser:pwuser /app/dist ./dist
+COPY --chown=pwuser:pwuser package.json ./
+USER pwuser:pwuser
+ENV HOME=/tmp WIKI_RENDERER=1
+ENTRYPOINT ["node", "dist/canvasRenderServer.js"]

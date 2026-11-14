@@ -17,6 +17,7 @@ import { registerAuthTools } from "./tools/auth.js";
 import { registerOrganizeTools } from "./tools/organize.js";
 import { registerPropertyTools } from "./tools/properties.js";
 import { registerIconTools } from "./tools/icons.js";
+import { registerCanvasTools } from "./tools/canvas.js";
 import { runCli } from "./cli.js";
 import { startHttpMcpServer } from "./sse.js";
 import { existsSync } from "fs";
@@ -238,6 +239,7 @@ async function buildServer() {
   registerPropertyTools(server, gql, { workspaceId: config.defaultWorkspaceId });
   registerIconTools(server, gql, { workspaceId: config.defaultWorkspaceId });
   registerUserTools(server, gql);
+  registerCanvasTools(server, gql, usesDelegatedAuth && process.env.AFFINE_CANVAS_RENDER_ENABLED === "true");
   registerUserCRUDTools(server, gql);
   if (config.authMode !== "oauth") {
     registerAuthTools(server, gql, config.baseUrl);

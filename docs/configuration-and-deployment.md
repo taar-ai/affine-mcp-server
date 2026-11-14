@@ -635,3 +635,16 @@ folders, and page content use this same delta strategy. New document creation
 still sends an initial snapshot. This reduces repeated broadcast payloads; it
 does not compact historical data already stored by AFFiNE or change CRDT conflict
 resolution. Initial document loads can therefore still be large.
+## Canvas Renderer (Opt-In)
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `AFFINE_CANVAS_RENDER_ENABLED` | `false` | Environment-only; enable reviewed loopback renderer in delegated deployments. |
+| `AFFINE_RENDER_BACKEND_ORIGIN` | `http://affine-api:3010` | Environment-only renderer setting; fixed Wiki API/static asset origin. |
+
+`AFFINE_CANVAS_RENDER_ENABLED=true` enables the reviewed renderer sidecar for
+delegated-identity deployments. Default is disabled. The MCP connects only to
+`127.0.0.1:3100`; no caller-provided renderer URL is accepted.
+`AFFINE_RENDER_BACKEND_ORIGIN` configures the renderer's fixed Wiki asset/API
+origin (default `http://affine-api:3010`). Neither variable contains a credential.
+The renderer never accepts a shared service credential or provisions users.
