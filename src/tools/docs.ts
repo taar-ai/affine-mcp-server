@@ -4,6 +4,7 @@ import { isDeepStrictEqual } from "node:util";
 import { deleteNativeMindmap, registerMindmapTools } from "./mindmap.js";
 import { z } from "zod/v3";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { canvasMarkdownOmissions } from "../util/canvasFidelity.js";
 import { generateKeyBetween, generateNKeysBetween } from "fractional-indexing";
 import { GraphQLClient } from "../graphqlClient.js";
 import { receipt, text, toolError, ToolFailure } from "../util/mcp.js";
@@ -4014,6 +4015,10 @@ export function registerDocTools(
     const flavourCounts: Record<string, number> = {};
     const unsupportedBlocks: Array<{ id: string; flavour: string | null; reason: string }> = [];
     const conditionallyRiskyBlocks: Array<{ id: string; flavour: string | null; reason: string }> = [];
+    const canvasOmissions = canvasMarkdownOmissions(doc);
+    for (const canvas of canvasOmissions) {
+      unsupportedBlocks.push({ id: canvas.surfaceId, flavour: "affine:surface", reason: `Markdown omits ${canvas.count} canvas surface element(s), including shapes, connectors, and mind maps.` });
+    }
 
     for (const block of blockRows) {
       const flavourKey = block.flavour || "unknown";
@@ -4079,8 +4084,8 @@ export function registerDocTools(
       tags: collected.tags,
       rootBlockIds: collected.rootBlockIds,
       markdown: rendered.markdown,
-      markdownWarnings: rendered.warnings,
-      markdownLossy: rendered.lossy,
+      markdownWarnings: [...rendered.warnings, ...canvasOmissions.map(canvas => `Markdown omits ${canvas.count} canvas surface element(s).`)],
+      markdownLossy: rendered.lossy || canvasOmissions.length > 0,
       flavourCounts,
       unsupportedBlocks,
       conditionallyRiskyBlocks,

@@ -5,6 +5,7 @@
     "test-blob-live.mjs": "integration",
     "test-blob-upload-contract.mjs": "fast",
     "test-block-editing.mjs": "integration",
+    "test-canvas-fidelity-unit.mjs": "fast",
     "test-canvas-tool-map-demo.mjs": "integration",
     "test-capabilities-blob-upload.mjs": "fast",
     "test-capabilities-fidelity.mjs": "integration",
@@ -108,6 +109,7 @@
   },
   "suites": {
     "fast": [
+      "test-canvas-fidelity-unit.mjs",
       "test-auth-session.mjs",
       "test-blob-upload-contract.mjs",
       "test-capabilities-blob-upload.mjs",
