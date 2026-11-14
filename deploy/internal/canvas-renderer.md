@@ -25,7 +25,7 @@ snapshot and reports whether a later revision was observed.
 - Both GP nodes need `profiles/wiki-renderer-v2.json` under kubelet's seccomp
   directory. Installation and browser sandbox proof are tracked on
   `k8s-bootstrap/main`, commit `77b19405`, under `k3/ahd/chromium/`.
-- Only the worker overrides seccomp to Localhost. Non-root UID/GID 1000,
+- Only the worker overrides seccomp to Localhost. Non-root pwuser UID/GID 1001,
   AppArmor RuntimeDefault, drop-ALL capabilities and no-new-privileges remain.
 - Root filesystem is read-only. `/tmp` and `/dev/shm` are separate bounded,
   memory-backed emptyDirs, not shared with the adapter's credential state.
@@ -61,7 +61,7 @@ For the synthetic check, select the running adapter pod explicitly:
 
 ```sh
 kubectl --context k3 -n taar-int-affine exec -i POD_NAME -c canvas-renderer \
-  -- node --input-type=module < scripts/verify-deployed-canvas-renderer.mjs
+  -- node --no-experimental-webstorage < scripts/verify-deployed-canvas-renderer.mjs
 ```
 
 This checks real PNG pixels on desktop/mobile, frame selection, stale revision,

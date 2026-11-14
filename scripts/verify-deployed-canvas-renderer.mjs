@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { inflateSync } from 'node:zlib';
 import * as Y from 'yjs';
+import { chromium } from 'playwright-core';
 import { CanvasRenderer } from './dist/canvasRenderer.js';
 
 const origin = process.env.AFFINE_RENDER_BACKEND_ORIGIN ?? 'http://affine-api:3010';
@@ -52,6 +53,22 @@ const fixtures = { alpha: snapshot('Identity A', '#b8e5d2'), beta: snapshot('Ide
 function renderer({ revoke = false, maxConcurrency = 1 } = {}) {
   let reads = 0, assets = 0;
   return { instance: new CanvasRenderer({ backendOrigin: origin, maxConcurrency,
+    ...(process.env.WIKI_RENDER_QA_DIAGNOSTICS === 'true' ? { browserFactory: async () => {
+      const browser = await chromium.launch({ headless: true, chromiumSandbox: true, timeout: 5000,
+        args: ['--disable-background-networking', '--force-webrtc-ip-handling-policy=disable_non_proxied_udp'] });
+      browser.on('disconnected', () => console.error('QA browser closed'));
+      const create = browser.newContext.bind(browser);
+      browser.newContext = async options => {
+        const context = await create(options);
+        context.on('page', page => {
+          page.on('pageerror', error => console.error('QA page error:', error.message.slice(0, 1500)));
+          page.on('console', message => { if (message.type() === 'error') console.error('QA console:', message.text().slice(0, 1500)); });
+          page.on('requestfailed', request => console.error('QA blocked/failed asset:', new URL(request.url()).pathname));
+        });
+        return context;
+      };
+      return browser;
+    } } : {}),
     fetch: async (url, init) => {
       const parsed = new URL(url);
       if (parsed.pathname.startsWith('/api/')) {

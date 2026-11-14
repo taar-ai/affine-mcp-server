@@ -56,7 +56,7 @@ export function allowedRenderAsset(value: string, origin: string): boolean {
   if (url.origin !== origin || url.username || url.password || url.search || url.hash) return false;
   if (url.pathname === "/internal/mcp-render") return true;
   if (/^\/(?:styles|vendor|npm-async-@vanilla-extract)\.[a-f0-9]+\.css$/.test(url.pathname)) return true;
-  return /^\/(?:js|css|fonts|assets)\/[A-Za-z0-9_./-]+\.(?:js|css|woff2?|ttf|otf|png|webp|svg)$/.test(url.pathname);
+  return /^\/(?:js|css|fonts|assets)\/[A-Za-z0-9_@./-]+\.(?:js|css|woff2?|ttf|otf|png|webp|svg)$/.test(url.pathname);
 }
 
 export async function boundedBody(response: Response, maximum: number, consume?: (bytes: number) => void): Promise<Buffer> {

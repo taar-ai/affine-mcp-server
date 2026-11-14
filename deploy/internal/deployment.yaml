@@ -173,7 +173,7 @@ spec:
           image: taaracr0.azurecr.io/taar-affine-mcp@sha256:df959bb64178b70012d44dc42bee1e143a29c04343af4d5aa7dd1feb1fe6adb0
           imagePullPolicy: IfNotPresent
           command: [/bin/sh, -ec]
-          args: ["ulimit -c 0; exec node dist/canvasRenderServer.js"]
+          args: ["ulimit -c 0; exec node --no-experimental-webstorage dist/canvasRenderServer.js"]
           env:
             - name: AFFINE_RENDER_BACKEND_ORIGIN
               value: http://affine-api:3010
@@ -181,8 +181,8 @@ spec:
               value: /tmp
           securityContext:
             runAsNonRoot: true
-            runAsUser: 1000
-            runAsGroup: 1000
+            runAsUser: 1001
+            runAsGroup: 1001
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
             capabilities:

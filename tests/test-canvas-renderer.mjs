@@ -69,8 +69,8 @@ test('render request limits and asset routes reject identity injection, SSRF and
     { ...input, width: 2048, height: 2048, scale: 2 }, { ...input, scale: NaN }, { ...input, viewport: { x: Infinity, y: 0, width: 1, height: 1 } }]) {
     assert.equal(canvasRenderSchema.safeParse(value).success, false);
   }
-  for (const path of ['/internal/mcp-render', '/js/index.123.js', '/fonts/local.woff2', '/styles.1056fe91.css', '/vendor.838e270b.css', '/npm-async-@vanilla-extract.ab12cd34.css']) assert.ok(allowedRenderAsset(origin + path, origin));
-  for (const url of ['http://attacker.test/js/a.js', origin + '/graphql', origin + '/api/workspaces/x/docs/y', origin + '/js/a.js?credential=x', 'file:///secret', origin + '/js/%2fapi.js']) {
+  for (const path of ['/internal/mcp-render', '/js/index.123.js', '/fonts/local.woff2', '/styles.1056fe91.css', '/vendor.838e270b.css', '/npm-async-@vanilla-extract.ab12cd34.css', '/js/npm-async-@shikijs.42f70e02.js']) assert.ok(allowedRenderAsset(origin + path, origin));
+  for (const url of ['http://attacker.test/js/a.js', 'http://user@wiki-api.test/js/a.js', origin + '/graphql', origin + '/api/workspaces/x/docs/y', origin + '/js/a.js?credential=x', 'file:///secret', origin + '/js/%2fapi.js']) {
     assert.equal(allowedRenderAsset(url, origin), false);
   }
 });
