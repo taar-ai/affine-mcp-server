@@ -25,6 +25,7 @@ data:
   AFFINE_OAUTH_SCOPES: openid email profile
   AFFINE_OAUTH_METADATA_RELAY_BASE_URL: http://affine-taar-jwks:8080
   AFFINE_TOOL_PROFILE: authoring
+  AFFINE_CANVAS_RENDER_ENABLED: "false"
   XDG_CONFIG_HOME: /tmp/affine-mcp
 ---
 apiVersion: cert-manager.io/v1
@@ -122,7 +123,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: mcp
-          image: taaracr0.azurecr.io/taar-affine-mcp@sha256:7a18dee7144948deff1f588a1820ea31ebe2f939ae220299b81cf4d9e9355cd2
+          image: taaracr0.azurecr.io/taar-affine-mcp@sha256:73621ace4ad927e8f48c9bdba6df48bdc6bd50e21db81abe38dd9f26f3b3b7dc
           imagePullPolicy: IfNotPresent
           envFrom:
             - configMapRef:
@@ -168,6 +169,57 @@ spec:
           volumeMounts:
             - name: tmp
               mountPath: /tmp
+        - name: canvas-renderer
+          image: taaracr0.azurecr.io/taar-affine-mcp@sha256:df959bb64178b70012d44dc42bee1e143a29c04343af4d5aa7dd1feb1fe6adb0
+          imagePullPolicy: IfNotPresent
+          command: [/bin/sh, -ec]
+          args: ["ulimit -c 0; exec node dist/canvasRenderServer.js"]
+          env:
+            - name: AFFINE_RENDER_BACKEND_ORIGIN
+              value: http://affine-api:3010
+            - name: HOME
+              value: /tmp
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+            seccompProfile:
+              type: Localhost
+              localhostProfile: profiles/wiki-renderer-v2.json
+            appArmorProfile:
+              type: RuntimeDefault
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 1536Mi
+          startupProbe:
+            exec:
+              command: [node, -e, "fetch('http://127.0.0.1:3100/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+            timeoutSeconds: 3
+            periodSeconds: 2
+            failureThreshold: 30
+          readinessProbe:
+            exec:
+              command: [node, -e, "fetch('http://127.0.0.1:3100/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+            timeoutSeconds: 3
+            periodSeconds: 15
+          livenessProbe:
+            exec:
+              command: [node, -e, "fetch('http://127.0.0.1:3100/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+            timeoutSeconds: 3
+            periodSeconds: 20
+          volumeMounts:
+            - name: renderer-tmp
+              mountPath: /tmp
+            - name: renderer-shm
+              mountPath: /dev/shm
         - name: tls
           image: nginx@sha256:a8b39bd9cf0f83869a2162827a0caf6137ddf759d50a171451b335cecc87d236
           command: [/bin/sh, -ec]
@@ -210,6 +262,14 @@ spec:
             - name: nginx-tmp
               mountPath: /tmp
       volumes:
+        - name: renderer-tmp
+          emptyDir:
+            medium: Memory
+            sizeLimit: 256Mi
+        - name: renderer-shm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 128Mi
         - name: nginx-config
           configMap:
             name: affine-mcp-tls
