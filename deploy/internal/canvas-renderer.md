@@ -38,9 +38,11 @@ snapshot and reports whether a later revision was observed.
 
 ## Rollout Gates
 
-The deployment manifest initially sets `AFFINE_CANVAS_RENDER_ENABLED=false`.
-This advertises a disabled tool but prevents user calls from reaching the
-worker. The worker can still be checked locally by an authorized operator.
+The checked-in deployment records the enabled rollout. For future upgrades,
+stage `AFFINE_CANVAS_RENDER_ENABLED=false` first. This advertises a disabled
+tool but prevents user calls from reaching the worker. The worker can still
+be checked locally by an authorized operator. ConfigMap flag changes require
+an adapter pod restart to take effect.
 
 1. Verify exact image digests and preload images before Recreate updates.
 2. Deploy the prepared Wiki frontend and public bootstrap deny, retaining the

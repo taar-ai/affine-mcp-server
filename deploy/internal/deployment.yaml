@@ -25,7 +25,7 @@ data:
   AFFINE_OAUTH_SCOPES: openid email profile
   AFFINE_OAUTH_METADATA_RELAY_BASE_URL: http://affine-taar-jwks:8080
   AFFINE_TOOL_PROFILE: authoring
-  AFFINE_CANVAS_RENDER_ENABLED: "false"
+  AFFINE_CANVAS_RENDER_ENABLED: "true"
   XDG_CONFIG_HOME: /tmp/affine-mcp
 ---
 apiVersion: cert-manager.io/v1
@@ -123,7 +123,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: mcp
-          image: taaracr0.azurecr.io/taar-affine-mcp@sha256:73621ace4ad927e8f48c9bdba6df48bdc6bd50e21db81abe38dd9f26f3b3b7dc
+          image: taaracr0.azurecr.io/taar-affine-mcp@sha256:1b9820e6078eb4234ce55710dc4fbd4299c1b1b5f6d512561bd45c08b95e84ea
           imagePullPolicy: IfNotPresent
           envFrom:
             - configMapRef:
@@ -170,7 +170,7 @@ spec:
             - name: tmp
               mountPath: /tmp
         - name: canvas-renderer
-          image: taaracr0.azurecr.io/taar-affine-mcp@sha256:df959bb64178b70012d44dc42bee1e143a29c04343af4d5aa7dd1feb1fe6adb0
+          image: taaracr0.azurecr.io/taar-affine-mcp@sha256:7910c891fa5c609db03cc0e0491dde2b7e8ea244c327edbf119cdc27abca29ed
           imagePullPolicy: IfNotPresent
           command: [/bin/sh, -ec]
           args: ["ulimit -c 0; exec node --no-experimental-webstorage dist/canvasRenderServer.js"]
